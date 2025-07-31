@@ -116,7 +116,7 @@ def organize_simulation_results(batch_folder, num_sims, root_dir):
     Move simulation results from backup folders to organized batch folder
     """
     # Use the specific backup directory path
-    backup_dir = r"/Users/seaco/OneDrive/Documents/Charles/SORN_PC/backup"
+    backup_dir = os.path.join(os.path.dirname(root_dir), "backup")
     batch_path = os.path.join(backup_dir, batch_folder)
     
     print("\nOrganizing results...")
