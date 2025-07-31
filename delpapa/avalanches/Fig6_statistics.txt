@@ -1,0 +1,4 @@
+Figure 6 Recreation Statistics
+Batch analyzed: batch_hip0.0200_fp0.00_cde0.00_cdi0.00
+Number of simulations: 12
+

@@ -1,0 +1,24 @@
+{
+  "run_id": "seed_2",
+  "seed": 645675,
+  "parameters": {
+    "N_E": 200,
+    "N_I": 40,
+    "eta_stdp": 0.004,
+    "eta_istdp": 0.001,
+    "eta_ip": 0.01,
+    "lambda_": 20,
+    "noise_sig": 0.22360679774997896,
+    "h_ip": 0.01
+  },
+  "sim_steps": 300000,
+  "final_activity_E": 0.015,
+  "final_activity_I": 0.0,
+  "final_mean_threshold": 0.5518050000002316,
+  "final_connection_fraction": 0.166356783919598,
+  "final_mean_weight": 0.030206917384080954,
+  "mean_activity_E": 0.009933333333333334,
+  "std_activity_E": 0.006903783181866462,
+  "mean_connection_fraction": 0.15349137353433834,
+  "std_connection_fraction": 0.015511014695666816
+}

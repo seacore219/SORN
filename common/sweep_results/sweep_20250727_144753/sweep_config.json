@@ -1,0 +1,22 @@
+{
+  "param_ranges": {
+    "h_ip": [
+      0.01,
+      0.1
+    ]
+  },
+  "base_params": {
+    "N_E": 200,
+    "N_I": 40,
+    "eta_stdp": 0.004,
+    "eta_istdp": 0.001,
+    "eta_ip": 0.01,
+    "lambda_": 20,
+    "noise_sig": 0.22360679774997896
+  },
+  "sim_steps": 300000,
+  "n_seeds": 3,
+  "total_runs": 6,
+  "timestamp": "20250727_144753",
+  "base_seed": 645673
+}
