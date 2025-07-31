@@ -1,2 +1,5 @@
 ﻿backup/*
 !backup/.gitkeep
+!backup/test_single/
+backup/test_single/*
+!backup/test_single/.gitkeep
