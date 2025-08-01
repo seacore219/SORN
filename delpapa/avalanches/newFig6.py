@@ -104,7 +104,7 @@ def plot_power_law_pdf(data, ax, color='k', linewidth=1.5, label=None, bins=50):
 
 def main():
     # Specify the batch folder you want to analyze
-    batch_path = r"C:\Users\seaco\OneDrive\Documents\Charles\SORN_PC\backup\batch_ExtraInput_20250730_223904"
+    batch_path = r"C:\Users\seaco\OneDrive\Documents\Charles\SORN_PC\backup\batch_ExtraInput_20250731_234502"
     
     print(f"Analyzing batch: {os.path.basename(batch_path)}")
     print(f"Full path: {batch_path}")

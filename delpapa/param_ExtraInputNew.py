@@ -34,10 +34,11 @@ c.W_ie = utils.Bunch(use_sparse=False,
                      avoid_self_connections=True)
 
 steps_each_phase = 2000000  # 2M steps per phase
-c.steps_transient = steps_each_phase      # Initial settling
-c.steps_noExternalInput = steps_each_phase # Normal activity (before perturbation)
-c.steps_ExternalInput = steps_each_phase   # Perturbation phase
-c.N_steps = c.steps_transient + c.steps_noExternalInput + c.steps_ExternalInput
+c.steps_transient = steps_each_phase           # Initial self-organization
+c.steps_noExternalInput = steps_each_phase     # Baseline measurement
+c.steps_ExternalInput = steps_each_phase       # Input onset + adaptation
+c.steps_stable_with_input = steps_each_phase   # New stable state with input
+c.N_steps = c.steps_transient + c.steps_noExternalInput + c.steps_ExternalInput + c.steps_stable_with_input
 
 c.eta_ip = 0.01
 c.h_ip = 0.1
@@ -47,7 +48,7 @@ c.noise_sig_e = np.sqrt(0.05)
 c.noise_sig_i = np.sqrt(0.05)
 
 c.input_gain = 1  # Input strength
-c.noise_fire = 0
+c.noise_fire = 100000000
 c.noise_fire_struc = 0
 
 c.stats.file_suffix = 'test'

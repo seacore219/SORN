@@ -28,7 +28,7 @@ print("[INFO] Libraries imported successfully.")
 # ============================================
 # CONFIGURATION
 # ============================================
-base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\finegrain\\batch_hip0.1000_fp0.00_cde0.00_cdi0.00'
+base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\batch_ExtraInput_20250730_223904'
 starting_time_point = 3000000
 end_time_point = 6000000  # Set to None for full length
 

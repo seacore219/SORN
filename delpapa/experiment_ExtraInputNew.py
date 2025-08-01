@@ -4,7 +4,7 @@ import utils
 utils.backup(__file__)
 
 from delpapa.plot import plot_results as plot_results_single
-from common.sources import NoSource
+from common.sources import CountingSource, NoSource  # Added CountingSource import
 from common.experiments import AbstractExperiment
 from common.sorn_stats import *
 
@@ -13,13 +13,13 @@ class Experiment_test(AbstractExperiment):
     def start(self):
         super(Experiment_test,self).start()
         c = self.params.c
-        # Use NoSource throughout - no external input
-        self.inputsource = NoSource()
+        # Start with NoSource
+        self.inputsource = NoSource(N_i=c.N_u_e)
         
         stats_single = [
             ActivityStat(),
-            SpikesStat(),              # Excitatory spikes
-            SpikesStat(inhibitory=True),  # Inhibitory spikes
+            SpikesStat(),              
+            SpikesStat(inhibitory=True),  # If you want inhibitory spikes
             ConnectionFractionStat(),
         ]
         
@@ -42,29 +42,33 @@ class Experiment_test(AbstractExperiment):
         print '\n\nNormal phase (before perturbation):'
         sorn.simulation(c.steps_noExternalInput)
         
-        print '\n\nPerturbation phase (increased noise):'
+        print '\n\nExternal Input on'
         
-        # Instead of external input, increase internal noise
-        # This is what creates the perturbation for Figure 6
-        old_noise_e = c.noise_sig_e
-        old_noise_i = c.noise_sig_i
+        # external input definition
+        word1 = "A"
+        word2 = "B"
+        word3 = "C"
+        word4 = "D"
+        word5 = "E"
+        word6 = "F"
+        word7 = "G"
+        word8 = "H"
+        word9 = "I"
+        word10 = "J"
+        words = [word1, word2, word3, word4, word5, word6, word7, \
+                word8, word9, word10]
+        # external input random transitions
+        words_len = len(words)  # This was missing!
+        words_trans = np.ones([words_len,words_len])*(1./words_len)
         
-        # Increase noise significantly
-        c.noise_sig_e = np.sqrt(0.2)  # Increased from sqrt(0.05)
-        c.noise_sig_i = np.sqrt(0.2)
-        
-        print("Increased noise levels:")
-        print("  E noise:", c.noise_sig_e)
-        print("  I noise:", c.noise_sig_i)
-        
-        # Run with increased noise
+        newsource = CountingSource(words, words_trans, \
+                                   c.N_u_e, c.N_u_i, avoid=False)
+        sorn.source = newsource
+        sorn.W_eu = newsource.generate_connection_e(c.N_e)
         sorn.simulation(c.steps_ExternalInput)
         
-        # Restore original noise (for any future use)
-        c.noise_sig_e = old_noise_e
-        c.noise_sig_i = old_noise_i
-        
-        return {'source':self.inputsource}
+        # Return sources to match original
+        return {'source_plastic':self.inputsource,'source_test':newsource}
     
     def plot_single(self,path,filename):
         plot_results_single(path,filename)
