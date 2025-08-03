@@ -6,22 +6,23 @@ utils.backup(__file__)
 from common.defaults import *
 import random
 
+# Network parameters
 c.N_e = 200
 c.N_i = int(np.floor(0.2*c.N_e))
 c.N = c.N_e + c.N_i
 
-c.N_u_e = 20  # Number of input units (one per letter in alphabet)
+c.N_u_e = int(np.floor(0.04*c.N_e))  # 4% of excitatory neurons
 c.N_u_i = 0
 
+# Connection parameters (matching original)
 c.W_ee = utils.Bunch(use_sparse=True,
                      lamb = 0.1*c.N_e,
                      avoid_self_connections=True,
                      eta_stdp = 0.004,
-                     sp_prob =  c.N_e*(c.N_e-1)*(0.1/(200*199)),
+                     sp_prob = c.N_e*(c.N_e-1)*(0.1/(200*199)),
                      sp_initial = 0.001,
                      no_prune = False,
-                     upper_bound = 1
-                     )
+                     upper_bound = 1)
 
 c.W_ei = utils.Bunch(use_sparse=False,
                      lamb=0.2*c.N_e,
@@ -33,30 +34,33 @@ c.W_ie = utils.Bunch(use_sparse=False,
                      lamb=1.0*c.N_i,
                      avoid_self_connections=True)
 
-steps_each_phase = 2000000  # 2M steps per phase
-c.steps_transient = steps_each_phase           # Initial self-organization
-c.steps_noExternalInput = steps_each_phase     # Baseline measurement
-c.steps_ExternalInput = steps_each_phase       # Input onset + adaptation
-c.steps_stable_with_input = steps_each_phase   # New stable state with input
-c.N_steps = c.steps_transient + c.steps_noExternalInput + c.steps_ExternalInput + c.steps_stable_with_input
+# Use same as original but scale up for proper statistics
+section_steps = 2000000  # 2M steps per section
+c.steps_transient = section_steps
+c.steps_noExternalInput = section_steps  
+c.steps_ExternalInput = section_steps    
 
+c.N_steps = c.steps_transient + c.steps_noExternalInput + c.steps_ExternalInput
+
+# Plasticity parameters
 c.eta_ip = 0.01
 c.h_ip = 0.1
 
-c.noise_sig =  np.sqrt(0.05)
+# Noise parameters
+c.noise_sig = np.sqrt(0.05)
 c.noise_sig_e = np.sqrt(0.05)
 c.noise_sig_i = np.sqrt(0.05)
 
-c.input_gain = 1  # Input strength
-c.noise_fire = 100000000
+# Input parameters
+c.input_gain = 100000000  # Very high gain
+c.noise_fire = 0
 c.noise_fire_struc = 0
 
-c.stats.file_suffix = 'test'
+# Stats parameters
+c.stats.file_suffix = 'ExtraInput'
 c.display = True
-
 c.stats.save_spikes = True
-# To save full raster, don't use only_last_spikes
-# c.stats.only_last_spikes = 1000  # Comment this out to save ALL spikes
 
+# Experiment configuration
 c.experiment.module = 'delpapa.experiment_ExtraInputNew'
 c.experiment.name = 'Experiment_test'

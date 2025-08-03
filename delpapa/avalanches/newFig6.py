@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Recreate Figure 6 from SORN paper using saved h5 files
-This analyzes avalanche distributions in three regimes:
-- Normal (before input)
-- Extra input start (onset of input)
-- Extra input end (readaptation)
+Recreate Figure 6 exactly as in the paper
+Modified to work with SORN raster data from specific directory structure
 """
 
 from __future__ import division
@@ -14,67 +11,44 @@ import matplotlib.pyplot as plt
 import tables
 import os
 import sys
-import glob
-import re
+try:
+    import powerlaw as pl
+except ImportError:
+    print("Warning: powerlaw library not found. Install with: pip install powerlaw")
+    pl = None
 
-# Parameters
+# Parameters from original Fig6.py
 section_steps = int(2e6)
-extrainput_steps = 20  # Duration of extra input phase
+extrainput_steps = 20  # Analysis window for onset
 
-# Figure parameters
-width = 7
-height = 3
-letter_size = 10
-letter_size_panel = 12
-line_width = 1.5
-line_width_fit = 2.0
-
-def get_h5_files(batch_path):
-    """Find all result.h5 files in the simulation directories"""
-    h5_files = []
-    
-    # Look for directories with date pattern or sim_XX pattern
-    for folder in os.listdir(batch_path):
-        folder_path = os.path.join(batch_path, folder)
-        if not os.path.isdir(folder_path):
-            continue
-            
-        # Check if it matches date pattern (YYYY-MM-DD HH-MM-SS) or sim pattern
-        date_pattern = r'\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}'
-        sim_pattern = r'sim_\d+_\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}'
-        
-        if re.match(date_pattern, folder) or re.match(sim_pattern, folder):
-            h5_path = os.path.join(folder_path, 'common', 'result.h5')
-            if os.path.exists(h5_path):
-                h5_files.append(h5_path)
-                print(f"Found: {folder}/common/result.h5")
-    
-    print(f"\nTotal h5 files found: {len(h5_files)}")
-    return sorted(h5_files)
-
-def simple_avalanche_analysis(activity, threshold):
+def detect_avalanches_with_transient(activity, threshold, transient_steps=0):
     """
-    Simple avalanche detection
-    An avalanche starts when activity exceeds threshold and ends when it goes below
+    Detect avalanches but only count those that START after transient_steps
+    This matches the original paper's approach for input onset
     """
     avalanches = []
     in_avalanche = False
+    start_time = 0
     current_duration = 0
     current_size = 0
     
-    for act in activity:
+    for t, act in enumerate(activity):
         if act > threshold:
-            in_avalanche = True
+            if not in_avalanche:
+                in_avalanche = True
+                start_time = t
+                current_duration = 0
+                current_size = 0
             current_duration += 1
             current_size += act
         else:
             if in_avalanche:
-                avalanches.append((current_duration, current_size))
+                # Only include avalanche if it started after transient
+                if start_time >= transient_steps:
+                    avalanches.append((current_duration, current_size))
                 in_avalanche = False
-                current_duration = 0
-                current_size = 0
     
-    if in_avalanche:  # Handle case where data ends during avalanche
+    if in_avalanche and start_time >= transient_steps:
         avalanches.append((current_duration, current_size))
     
     durations = np.array([a[0] for a in avalanches if a[0] > 0])
@@ -82,190 +56,225 @@ def simple_avalanche_analysis(activity, threshold):
     
     return durations, sizes
 
-def plot_power_law_pdf(data, ax, color='k', linewidth=1.5, label=None, bins=50):
-    """Plot probability density function on log-log scale"""
-    # Remove zeros and invalid values
-    data = data[data > 0]
-    if len(data) == 0:
-        return
-    
-    # Create log-spaced bins
-    min_val = np.min(data)
-    max_val = np.max(data)
-    bins = np.logspace(np.log10(min_val), np.log10(max_val), bins)
-    
-    # Calculate histogram
-    hist, bin_edges = np.histogram(data, bins=bins, density=True)
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    
-    # Plot only non-zero values
-    mask = hist > 0
-    ax.plot(bin_centers[mask], hist[mask], color=color, linewidth=linewidth, label=label)
+def detect_avalanches_threshold_percent(activity, theta_percent):
+    """
+    Detect avalanches using a percentage of mean activity as threshold
+    Used for confidence intervals
+    """
+    threshold = int(np.mean(activity) * theta_percent / 100.0) + 1
+    return detect_avalanches_with_transient(activity, threshold)
 
-def main():
-    # Specify the batch folder you want to analyze
-    batch_path = r"C:\Users\seaco\OneDrive\Documents\Charles\SORN_PC\backup\batch_ExtraInput_20250731_234502"
+def analyze_simulation(h5_file):
+    """Analyze a single simulation file"""
+    h5 = tables.open_file(h5_file, 'r')
     
-    print(f"Analyzing batch: {os.path.basename(batch_path)}")
-    print(f"Full path: {batch_path}")
+    # Get activity
+    activity = h5.root.activity[:]
+    if activity.ndim > 1:
+        activity = activity.flatten()
     
-    if not os.path.exists(batch_path):
-        print(f"Error: Batch path does not exist: {batch_path}")
+    # Get N_e
+    N_e = 200
+    if hasattr(h5.root, 'c') and hasattr(h5.root.c, 'N_e'):
+        N_e = h5.root.c.N_e
+    
+    # Convert to neuron counts
+    if np.max(activity) <= 1.0:
+        activity = np.round(activity * N_e)
+    
+    h5.close()
+    
+    results = {}
+    
+    # 1. Normal regime (section 2: steps 2M to 4M)
+    normal_activity = activity[section_steps:2*section_steps]
+    threshold_normal = int(np.mean(normal_activity) / 2.0) + 1  # Rounding as in original
+    T_normal, S_normal = detect_avalanches_with_transient(normal_activity, threshold_normal)
+    
+    # Also get avalanches at 5% and 25% thresholds for confidence intervals
+    T_normal_5, S_normal_5 = detect_avalanches_threshold_percent(normal_activity, 5)
+    T_normal_25, S_normal_25 = detect_avalanches_threshold_percent(normal_activity, 25)
+    
+    results['normal'] = {
+        'T': T_normal, 'S': S_normal, 
+        'T_5': T_normal_5, 'S_5': S_normal_5,
+        'T_25': T_normal_25, 'S_25': S_normal_25,
+        'threshold': threshold_normal
+    }
+    
+    # 2. Input onset (first 20 steps of section 3, but analyze 200 steps)
+    # Activity from 4M to 4M+200, but only count avalanches starting in first 20
+    onset_activity = activity[2*section_steps:2*section_steps + 10*extrainput_steps]
+    T_onset, S_onset = detect_avalanches_with_transient(onset_activity, 
+                                                        threshold_normal, 
+                                                        transient_steps=extrainput_steps)
+    
+    # For onset, use fixed thresholds as in original
+    T_onset_9, S_onset_9 = detect_avalanches_with_transient(onset_activity, 9, 
+                                                           transient_steps=extrainput_steps)
+    T_onset_12, S_onset_12 = detect_avalanches_with_transient(onset_activity, 12, 
+                                                             transient_steps=extrainput_steps)
+    
+    results['onset'] = {
+        'T': T_onset, 'S': S_onset,
+        'T_9': T_onset_9, 'S_9': S_onset_9,
+        'T_12': T_onset_12, 'S_12': S_onset_12
+    }
+    
+    # 3. Readaptation (rest of section 3: from 4M+20 to 6M)
+    readapt_activity = activity[2*section_steps + extrainput_steps:]
+    T_readapt, S_readapt = detect_avalanches_with_transient(readapt_activity, threshold_normal)
+    
+    T_readapt_5, S_readapt_5 = detect_avalanches_threshold_percent(readapt_activity, 5)
+    T_readapt_25, S_readapt_25 = detect_avalanches_threshold_percent(readapt_activity, 25)
+    
+    results['readapt'] = {
+        'T': T_readapt, 'S': S_readapt,
+        'T_5': T_readapt_5, 'S_5': S_readapt_5,
+        'T_25': T_readapt_25, 'S_25': S_readapt_25
+    }
+    
+    return results
+
+def plot_with_powerlaw(data, ax, color='k', linewidth=1.5, label=None):
+    """Plot using powerlaw library if available, otherwise use histogram"""
+    data = data[data > 0]
+    if len(data) < 10:
         return
     
-    h5_files = get_h5_files(batch_path)
+    if pl is not None:
+        # Use powerlaw library for smooth fitting
+        pl.plot_pdf(data, color=color, linewidth=linewidth, label=label, ax=ax)
+    else:
+        # Fallback to histogram
+        bins = np.logspace(np.log10(np.min(data)), np.log10(np.max(data)), 30)
+        hist, edges = np.histogram(data, bins=bins, density=True)
+        centers = np.sqrt(edges[:-1] * edges[1:])
+        mask = hist > 0
+        ax.plot(centers[mask], hist[mask], color=color, linewidth=linewidth, label=label)
+
+def plot_confidence_interval(data1, data2, ax, color, alpha=0.2):
+    """Plot confidence interval between two datasets"""
+    if pl is not None:
+        # Use powerlaw library's pdf function
+        pdf1 = pl.pdf(data1, 10)
+        pdf2 = pl.pdf(data2, 10)
+        bin_centers1 = (pdf1[0][:-1] + pdf1[0][1:]) / 2.
+        bin_centers2 = (pdf2[0][:-1] + pdf2[0][1:]) / 2.
+        x_max = pdf1[0].max()
+        interp1 = np.interp(np.arange(x_max), bin_centers1, pdf1[1])
+        interp2 = np.interp(np.arange(x_max), bin_centers2, pdf2[1])
+        ax.fill_between(np.linspace(0, x_max, len(interp2)), interp2, interp1, 
+                       facecolor=color, alpha=alpha)
+
+def create_figure6(batch_path):
+    """Create Figure 6 from batch of simulations"""
     
-    if not h5_files:
-        print("No h5 files found!")
-        return
+    # Find all folders starting with "202" (for years 2020-2029)
+    folders = []
+    if os.path.exists(batch_path):
+        for item in os.listdir(batch_path):
+            if item.startswith("202") and os.path.isdir(os.path.join(batch_path, item)):
+                folders.append(item)
     
-    # Initialize figure
-    fig = plt.figure(1, figsize=(width, height))
+    # Sort folders to process them in chronological order
+    folders.sort()
     
-    possible_regimes = ['normal', 'extrainput_start', 'extrainput_end']
+    print(f"Found {len(folders)} simulation folders starting with '202'")
     
-    # Storage for all trials
-    results = {regime: {'T_all': [], 'S_all': [], 'activity': []} for regime in possible_regimes}
+    # Build paths to result.h5 files
+    h5_files = []
+    for folder in folders:
+        h5_path = os.path.join(batch_path, folder, "common", "result.h5")
+        if os.path.exists(h5_path):
+            h5_files.append(h5_path)
+        else:
+            print(f"Warning: Could not find {h5_path}")
     
-    # Process each h5 file
-    for file_idx, h5_file in enumerate(h5_files):
-        sim_folder = os.path.basename(os.path.dirname(os.path.dirname(h5_file)))
-        print(f"\nProcessing file {file_idx + 1}/{len(h5_files)}: {sim_folder}")
-        
+    print(f"Found {len(h5_files)} simulations")
+    
+    # Collect results from all simulations
+    all_results = {
+        'normal': {'T': [], 'S': [], 'T_5': [], 'S_5': [], 'T_25': [], 'S_25': []},
+        'onset': {'T': [], 'S': [], 'T_9': [], 'S_9': [], 'T_12': [], 'S_12': []},
+        'readapt': {'T': [], 'S': [], 'T_5': [], 'S_5': [], 'T_25': [], 'S_25': []}
+    }
+    
+    for i, h5_file in enumerate(h5_files):
+        print(f"Processing {i+1}/{len(h5_files)}: {os.path.basename(os.path.dirname(os.path.dirname(h5_file)))}")
         try:
-            h5 = tables.open_file(h5_file, 'r')
-            
-            # Debug: List all available datasets
-            if file_idx == 0:  # Only print for first file
-                print("\n  Available datasets in h5 file:")
-                for node in h5.walk_nodes("/", "Array"):
-                    print(f"    {node._v_pathname}: shape {node.shape}")
-                print()
-            
-            # Get activity data
-            if hasattr(h5.root, 'activity'):
-                activity = h5.root.activity[:]
-                print(f"  Activity shape: {activity.shape}")
-                
-                # Handle different array shapes
-                if activity.ndim > 1:
-                    # If activity has shape (1, N_steps), flatten it
-                    activity = activity.flatten()
-                    print(f"  Flattened activity shape: {activity.shape}")
-                
-                # Get N_e from parameters if available
-                N_e = 200  # Default value
-                    
-                # Convert activity to actual neuron counts if needed
-                # The activity is usually stored as fraction of active neurons
-                if np.max(activity) <= 1.0:  # Likely a fraction
-                    activity = activity * N_e
-                
-                print(f"  Activity range: [{np.min(activity):.3f}, {np.max(activity):.3f}]")
-                print(f"  Activity mean: {np.mean(activity):.3f}")
-                
-                # Process each regime
-                # Normal: section 1 (before input)
-                if len(activity) >= 2 * section_steps:
-                    normal_activity = activity[section_steps:2*section_steps]
-                    results['normal']['activity'].append(normal_activity)
-                    print(f"  Normal phase: {len(normal_activity)} steps")
-                
-                # Extra input start: right after 2*section_steps
-                if len(activity) >= 2*section_steps + 10*extrainput_steps:
-                    start_activity = activity[2*section_steps:2*section_steps + extrainput_steps]
-                    results['extrainput_start']['activity'].append(start_activity)
-                    print(f"  Extra input start: {len(start_activity)} steps")
-                
-                # Extra input end: after the extra input phase
-                if len(activity) >= 2*section_steps + extrainput_steps:
-                    end_activity = activity[2*section_steps + extrainput_steps:]
-                    # Limit to reasonable length for analysis
-                    if len(end_activity) > section_steps - extrainput_steps:
-                        end_activity = end_activity[:section_steps - extrainput_steps]
-                    results['extrainput_end']['activity'].append(end_activity)
-                    print(f"  Extra input end: {len(end_activity)} steps")
-            else:
-                print("  Warning: No activity data found in h5 file")
-            
-            h5.close()
-            
+            results = analyze_simulation(h5_file)
+            for regime in ['normal', 'onset', 'readapt']:
+                for key in results[regime]:
+                    if key != 'threshold':
+                        all_results[regime][key].extend(results[regime][key])
         except Exception as e:
-            print(f"  Error processing {h5_file}: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"  Error: {e}")
             continue
     
-    # Calculate avalanches for each regime
-    colors = {'normal': 'k', 'extrainput_start': 'r', 'extrainput_end': 'cyan'}
-    labels = {'normal': 'Before input', 'extrainput_start': 'Input onset', 'extrainput_end': 'Readaptation'}
+    # Convert to arrays
+    for regime in all_results:
+        for key in all_results[regime]:
+            all_results[regime][key] = np.array(all_results[regime][key])
     
-    # Create subplots
-    ax1 = plt.subplot(121)  # Duration distributions
-    ax2 = plt.subplot(122)  # Size distributions
+    # Create figure
+    fig = plt.figure(figsize=(7, 3))
+    ax1 = plt.subplot(121)
+    ax2 = plt.subplot(122)
     
-    for regime in possible_regimes:
-        if not results[regime]['activity']:
-            print(f"\nNo data for regime: {regime}")
-            continue
-        
-        print(f"\nAnalyzing {regime}...")
-        
-        # Concatenate all activity data for this regime
-        all_activity = np.concatenate(results[regime]['activity'])
-        
-        # Calculate threshold (half of mean activity)
-        threshold = np.mean(all_activity) / 2.0
-        print(f"  Mean activity: {np.mean(all_activity):.3f}, Std: {np.std(all_activity):.3f}")
-        print(f"  Threshold: {threshold:.3f}")
-        
-        # Detect avalanches for each trial and combine
-        T_all = []
-        S_all = []
-        
-        for activity in results[regime]['activity']:
-            T, S = simple_avalanche_analysis(activity, threshold)
-            if len(T) > 0:
-                T_all.extend(T)
-                S_all.extend(S)
-        
-        T_all = np.array(T_all)
-        S_all = np.array(S_all)
-        
-        print(f"  Found {len(T_all)} avalanches")
-        if len(T_all) > 0:
-            print(f"  Duration range: [{np.min(T_all)}, {np.max(T_all)}]")
-            print(f"  Size range: [{np.min(S_all):.1f}, {np.max(S_all):.1f}]")
-        
-        # Plot distributions
-        if len(T_all) > 10:  # Need enough avalanches for meaningful distribution
-            plot_power_law_pdf(T_all, ax1, color=colors[regime], 
-                             linewidth=line_width if regime == 'normal' else line_width_fit,
-                             label=None)
-            plot_power_law_pdf(S_all, ax2, color=colors[regime], 
-                             linewidth=line_width if regime == 'normal' else line_width_fit,
-                             label=labels[regime])
+    # Define line widths
+    line_width = 1.5
+    line_width_fit = 2.0
     
-    # Format subplot 1 (Duration)
-    ax1.set_xscale('log')
-    ax1.set_yscale('log')
-    ax1.set_xlabel(r'$T$', fontsize=letter_size)
-    ax1.set_ylabel(r'$f(T)$', fontsize=letter_size)
+    # Plot distributions
+    # Panel A: Duration
+    plot_confidence_interval(all_results['normal']['T_5'], all_results['normal']['T_25'], 
+                           ax1, 'k', alpha=0.2)
+    plot_with_powerlaw(all_results['normal']['T'], ax1, 'k', line_width_fit, None)
+    
+    plot_confidence_interval(all_results['onset']['T_9'], all_results['onset']['T_12'], 
+                           ax1, 'r', alpha=0.2)
+    plot_with_powerlaw(all_results['onset']['T'], ax1, 'r', line_width, None)
+    
+    plot_confidence_interval(all_results['readapt']['T_5'], all_results['readapt']['T_25'], 
+                           ax1, 'cyan', alpha=0.2)
+    plot_with_powerlaw(all_results['readapt']['T'], ax1, 'cyan', line_width_fit, None)
+    
+    # Panel B: Size
+    plot_confidence_interval(all_results['normal']['S_5'], all_results['normal']['S_25'], 
+                           ax2, 'k', alpha=0.2)
+    plot_with_powerlaw(all_results['normal']['S'], ax2, 'k', line_width_fit, 'Before input')
+    
+    plot_confidence_interval(all_results['onset']['S_9'], all_results['onset']['S_12'], 
+                           ax2, 'r', alpha=0.2)
+    plot_with_powerlaw(all_results['onset']['S'], ax2, 'r', line_width, 'Input onset')
+    
+    plot_confidence_interval(all_results['readapt']['S_5'], all_results['readapt']['S_25'], 
+                           ax2, 'cyan', alpha=0.2)
+    plot_with_powerlaw(all_results['readapt']['S'], ax2, 'cyan', line_width_fit, 'Readaptation')
+    
+    # Format axes exactly as in paper
+    for ax in [ax1, ax2]:
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.xaxis.set_ticks_position('bottom')
+        ax.yaxis.set_ticks_position('left')
+    
+    # Panel A formatting
+    ax1.set_xlabel(r'$T$', fontsize=10)
+    ax1.set_ylabel(r'$f(T)$', fontsize=10)
     ax1.set_xlim([1, 300])
     ax1.set_ylim([0.0001, 1])
     ax1.set_xticks([1, 10, 100])
     ax1.set_xticklabels(['$10^0$', '$10^{1}$', '$10^{2}$'])
     ax1.set_yticks([1, 0.01, 0.0001])
     ax1.set_yticklabels(['$10^0$', '$10^{-2}$', '$10^{-4}$'])
-    ax1.tick_params(labelsize=letter_size)
-    ax1.spines['right'].set_visible(False)
-    ax1.spines['top'].set_visible(False)
     
-    # Format subplot 2 (Size)
-    ax2.set_xscale('log')
-    ax2.set_yscale('log')
-    ax2.set_xlabel(r'$S$', fontsize=letter_size)
-    ax2.set_ylabel(r'$f(S)$', fontsize=letter_size)
+    # Panel B formatting
+    ax2.set_xlabel(r'$S$', fontsize=10)
+    ax2.set_ylabel(r'$f(S)$', fontsize=10)
     ax2.set_xlim([1, 3000])
     ax2.set_ylim([0.00001, 0.1])
     ax2.set_xticks([1, 10, 100, 1000])
@@ -273,32 +282,28 @@ def main():
     ax2.set_yticks([0.1, 0.001, 0.00001])
     ax2.set_yticklabels(['$10^{-1}$', '$10^{-3}$', '$10^{-5}$'])
     
-    # Only add legend if we have data
-    handles, labels_list = ax2.get_legend_handles_labels()
-    if handles:
-        ax2.legend(loc=(0.5, 0.8), prop={'size': letter_size}, frameon=False)
+    # Legend
+    ax2.legend(loc=(0.5, 0.8), prop={'size': 10}, frameon=False)
     
-    # Add panel labels
+    # Panel labels
     ax1.annotate('A', xy=(-0.15, 0.9), xycoords='axes fraction',
-                fontsize=letter_size_panel, fontweight='bold',
-                horizontalalignment='right', verticalalignment='bottom')
+                fontsize=12, fontweight='bold')
     ax2.annotate('B', xy=(-0.15, 0.9), xycoords='axes fraction',
-                fontsize=letter_size_panel, fontweight='bold',
-                horizontalalignment='right', verticalalignment='bottom')
+                fontsize=12, fontweight='bold')
     
     # Adjust layout
-    plt.gcf().subplots_adjust(bottom=0.17, wspace=0.4)
+    plt.subplots_adjust(bottom=0.17, wspace=0.4)
     
-    # Save figure
-    output_dir = os.path.dirname(__file__)
-    output_path = os.path.join(output_dir, 'Fig6_recreated.pdf')
+    # Save
+    output_path = os.path.join(batch_path, 'Fig6_exact.pdf')
     plt.savefig(output_path, format='pdf', dpi=300, bbox_inches='tight')
-    print(f"\nFigure saved to: {output_path}")
-    
-    # Also save as PNG for easier viewing
     plt.savefig(output_path.replace('.pdf', '.png'), format='png', dpi=300, bbox_inches='tight')
+    print(f"Saved to: {output_path}")
     
     plt.show()
 
 if __name__ == "__main__":
-    main()
+    # Set the path directly here
+    batch_path = r"C:\Users\seaco\OneDrive\Documents\Charles\SORN_PC\backup\batch_ExtraInput_hip0.1_n20_ps1"
+    
+    create_figure6(batch_path)

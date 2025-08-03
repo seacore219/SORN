@@ -58,126 +58,70 @@ class CountingSource(AbstractSource):
     Source for the counting task.
     Different of words are presented with individual probabilities.
     """
-    def __init__(self, words,probs, N_u_e, N_u_i, avoid=False):
-        """
-        Initializes variables.
-
-        Parameters:
-            words: list
-                The words to present
-            probs: matrix
-                The probabilities of transitioning between word i and j
-                It is assumed that they are summing to 1
-            N_u: int
-                Number of active units per step
-            avoid: bool
-                Avoid same excitatory units for different words
-        """
-        self.word_index = 0  #Index for word
-        self.ind = 0         #Index within word
-        self.words = words   #different words
-        self.probs = probs   #Probability of transitioning between word i to word j
-        self.N_u_e = int(N_u_e)  #Number active per step
+    def __init__(self, words, probs, N_u_e, N_u_i, avoid=False):
+        self.word_index = 0  
+        self.ind = 0         
+        self.words = words   
+        self.probs = probs   
+        self.N_u_e = int(N_u_e)  
         self.N_u_i = int(N_u_i)
         self.avoid = avoid
-        self.alphabet = unique("".join(words))
+        
+        # Get unique characters from all words
+        all_chars = "".join(words)
+        # Use set to get unique characters, then sort them
+        self.alphabet = sorted(list(set(all_chars)))
         self.N_a = len(self.alphabet)
-        self.lookup = dict(zip(self.alphabet,range(self.N_a)))
+        # Create lookup dictionary mapping each character to an index
+        self.lookup = dict(zip(self.alphabet, range(self.N_a)))
+        
+        # Debug print to verify
+        print("Alphabet:", self.alphabet)
+        print("Lookup:", self.lookup)
+        
         self.glob_ind = [0]
-        self.glob_ind.extend(cumsum(map(len,words)))
+        self.glob_ind.extend(cumsum(map(len, words)))
         self.predict = self.predictability()
         self.reset()
 
-    @classmethod
-    def init_simple(cls, N_words, N_letters, word_length, max_fold_prob,
-                    N_u_e, N_u_i, avoiding, words=None):
-        """
-        Construct the arguments for the source to make it usable for the
-        cluster
-
-        Parameters:
-            N_words: int
-                Number of different words
-            N_letters: int
-                Number of letters to generate words from
-            word_length: list
-                Range of length (unimodal distribution)
-            max_fold_prob: float
-                maximal probability difference between words
-            N_u_e: int
-                Number of active excitatory units per step
-            N_u_i: int
-                Number of active inhibitory units per step
-            avoid: bool
-                Avoid same excitatory units for different words
-        """
-        letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-        assert(N_letters <= len(letters))
-        letters = array([x for x in letters[:N_letters]])
-
-        if words is None:
-            words = []
-
-            for i in range(N_words):
-                word = letters[randint(0,N_letters,randint(word_length[0],
-                                                         word_length[1]+1))]
-                words.append(''.join(word))
-        else:
-            assert(N_words == len(words) and
-                   N_letters == len(unique(''.join(words))))
-
-        probs = array([rand(N_words)*(max_fold_prob-1)+1]*N_words)
-
-        # Normalize
-        probs /= sum(probs,1)
-
-        return CountingSource(words, probs, N_u_e, N_u_i, avoid=avoiding)
-
-    def generate_connection_e(self,N_e):
-        W = zeros((N_e,self.N_a))
-
-        # CHANGE_A fixed weight matrix # for now for fanofactor
-        # for a in range(self.N_a):
-        #     W[a*self.N_u_e:(a+1)*self.N_u_e,a] = 1
+    # THIS METHOD MUST BE INDENTED AS PART OF CountingSource CLASS
+    def generate_connection_e(self, N_e):
+        W = zeros((N_e, self.N_a))
 
         available = set(range(N_e))
         for a in range(self.N_a):
-            temp = random.sample(available,self.N_u_e)
-            W[temp,a] = 1
+            temp = random.sample(available, self.N_u_e)
+            W[temp, a] = 1
             if self.avoid:
                 available = available.difference(temp)
-        # The underscore has the special property that it doesn't
-        # activate anything:
         if '_' in self.lookup:
-            W[:,self.lookup['_']] = 0
+            W[:, self.lookup['_']] = 0
 
         c = utils.Bunch(use_sparse=False,
                         lamb=np.inf,
                         avoid_self_connections=False)
-        ans = synapses.create_matrix((N_e,self.N_a),c)
+        ans = synapses.create_matrix((N_e, self.N_a), c)
         ans.W = W
-
         return ans
 
-    def generate_connection_i(self,N_i):
+    # THIS METHOD MUST ALSO BE INDENTED AS PART OF CountingSource CLASS
+    def generate_connection_i(self, N_i):
         c = utils.Bunch(use_sparse=False,
-                lamb=np.inf,
-                avoid_self_connections=False)
-        ans = synapses.create_matrix((N_i,self.N_a),c)
+                        lamb=np.inf,
+                        avoid_self_connections=False)
+        ans = synapses.create_matrix((N_i, self.N_a), c)
         W = zeros((N_i, self.N_a))
-        if N_i>0:
+        if N_i > 0:
             available = set(range(N_i))
             for a in range(self.N_a):
-                temp = random.sample(available,self.N_u_i)
-                W[temp,a] = 1
-                #~ if self.avoid: # N_i is much smaller -> broad inhibition?
-                    #~ available = available.difference(temp)
-            #The space char has the special prop that it doesn't activate anything:
+                temp = random.sample(available, self.N_u_i)
+                W[temp, a] = 1
             if '_' in self.lookup:
-                W[:,self.lookup['_']] = 0
+                W[:, self.lookup['_']] = 0
         ans.W = W
-
         return ans
+
+    # ... rest of the methods (char, index, next_word, etc.) ...
 
     def char(self):
         word = self.words[self.word_index]
@@ -185,18 +129,23 @@ class CountingSource(AbstractSource):
 
     def index(self):
         character = self.char()
-
+        if character not in self.lookup:
+            print("Character '%s' not in lookup!" % character)
+            print("Available characters:", self.lookup.keys())
+            print("Current word index:", self.word_index)
+            print("Current character index:", self.ind)
         ind = self.lookup[character]
         return ind
 
     def next_word(self):
         self.ind = 0
         w = self.word_index
-        p = self.probs[w,:]
-        self.word_index = np.where(rand()<=cumsum(p))[0][0]
+        p = self.probs[w, :]
+        # Fix the deprecation warning by using np.where instead of find
+        self.word_index = np.where(rand() <= cumsum(p))[0][0]
 
     def next(self):
-        self.ind = self.ind+1
+        self.ind = self.ind + 1
         string = self.words[self.word_index]
         if self.ind >= len(string):
             self.next_word()
@@ -205,17 +154,18 @@ class CountingSource(AbstractSource):
         return ans
 
     def reset(self):
-        self.next_word()
-        self.ind = -1
+        # Initialize to a valid state
+        self.word_index = 0  # Start with first word
+        self.ind = -1        # Will be incremented to 0 on first next() call
 
     def global_index(self):
-        return self.glob_ind[self.word_index]+self.ind
+        return self.glob_ind[self.word_index] + self.ind
 
     def global_range(self):
         return self.glob_ind[-1]
 
     def trial_finished(self):
-        return self.ind+1 >= len(self.words[self.word_index])
+        return self.ind + 1 >= len(self.words[self.word_index])
 
     def predictability(self):
         """
@@ -224,21 +174,12 @@ class CountingSource(AbstractSource):
         temp = self.probs
         for n in range(10):
             temp = temp.dot(temp)
-        final = temp[0,:]
-        #Let's assume that all words have unique initial letters
+        final = temp[0, :]
+        # Let's assume that all words have unique initial letters
         probs = map(len, self.words)
         probs = array(probs)
-        probs = (probs + self.probs.max(1)-1)/probs
-        return sum(final*probs)
-    
-    def index(self):
-        character = self.char()
-        ind = self.lookup[character]
-        return ind
-
-    def char(self):
-        word = self.words[self.word_index]
-        return word[self.ind]
+        probs = (probs + self.probs.max(1) - 1) / probs
+        return sum(final * probs)
 
 class TrialSource(AbstractSource):
     """
