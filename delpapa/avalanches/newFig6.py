@@ -304,6 +304,6 @@ def create_figure6(batch_path):
 
 if __name__ == "__main__":
     # Set the path directly here
-    batch_path = r"C:\Users\seaco\OneDrive\Documents\Charles\SORN_PC\backup\batch_ExtraInput_hip0.1_n20_ps1"
+    batch_path = r"C:\Users\seaco\OneDrive\Documents\Charles\SORN_PC\backup\batch_ExtraInput_hip0.1_n2_ps1"
     
     create_figure6(batch_path)

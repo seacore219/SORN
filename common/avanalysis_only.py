@@ -28,20 +28,20 @@ print("[INFO] Libraries imported successfully.")
 # ============================================
 # CONFIGURATION
 # ============================================
-base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\batch_ExtraInput_20250730_223904'
-starting_time_point = 3000000
+base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\delpapa_input\\batch_hip0.06_n4_ps1'
+starting_time_point = 5000000
 end_time_point = 6000000  # Set to None for full length
 
 # Avalanche analysis parameters
 AVALANCHE_PARAMS = {
-    'perc_threshold': 0.2,   # Percentile threshold for avalanche detection
+    'perc_threshold': 0.1,   # Percentile threshold for avalanche detection
     'const_threshold': None,  
     'size_bm': 10,           # Increase to start fitting at larger sizes
     'size_nfactor': 0,       # Positive value to shift xmin higher
-    'size_tail_cutoff': 0.5, # Decrease to cut off more of the tail
-    'duration_tm': 30,       
+    'size_tail_cutoff': 0.7, # Decrease to cut off more of the tail
+    'duration_tm': 3,       
     'duration_nfactor': 0,   
-    'duration_tail_cutoff': 0.78,
+    'duration_tail_cutoff': 0.6,
     'exclude_burst_min': 18,  # Minimum xmin value - increase if you want to force higher xmin
     'exclude_time_min': 10,  
     'exclude_burst_diff': 12,  # Minimum range (xmax-xmin) - increase for wider fitting range
