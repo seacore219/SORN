@@ -11,7 +11,7 @@ c.N_e = 200
 c.N_i = int(np.floor(0.2*c.N_e))
 c.N = c.N_e + c.N_i
 
-c.N_u_e = int(np.floor(0.03*c.N_e))  # 3% of excitatory neurons
+c.N_u_e = int(np.floor(0.06*c.N_e))  # 6% of excitatory neurons
 c.N_u_i = 0
 
 # Connection parameters (matching original)
@@ -38,7 +38,7 @@ c.W_ie = utils.Bunch(use_sparse=False,
 section_steps = 2000000  # 2M steps per section
 c.steps_transient = section_steps
 c.steps_noExternalInput = section_steps  
-c.steps_ExternalInput = section_steps*2   
+c.steps_ExternalInput = section_steps*4   
 
 c.N_steps = c.steps_transient + c.steps_noExternalInput + c.steps_ExternalInput
 
