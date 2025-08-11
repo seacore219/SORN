@@ -1830,7 +1830,7 @@ def plot_activity_matrix_detailed(raster, time_window=None,
     # 7. Correlation matrix (subset for visibility)
     ax7 = fig.add_subplot(gs[2, 2])
     # Take a subset of neurons for correlation calculation
-    subset_size = min(50, n_neurons)
+    subset_size = min(200, n_neurons)
     subset_raster = raster[:subset_size, :]
     corr_matrix = np.corrcoef(subset_raster)
     im7 = ax7.imshow(corr_matrix, cmap='RdBu_r', vmin=-1, vmax=1,
@@ -1934,6 +1934,7 @@ def plot_avalanche_highlighted_matrix(raster, avalanche_results,
                                      time_window=None, save_path=None):
     """
     Plot activity matrix with avalanches highlighted and annotated.
+    Fixed to handle both 'S'/'T' and 'Size'/'Duration' key names.
     
     Parameters:
     -----------
@@ -1961,31 +1962,44 @@ def plot_avalanche_highlighted_matrix(raster, avalanche_results,
     im = ax_main.imshow(raster, aspect='auto', cmap='Greys',
                        interpolation='nearest', origin='lower', alpha=0.8)
     
+    # Handle both key naming conventions
+    if 'S' in avalanche_results:
+        sizes_key = 'S'
+        durations_key = 'T'
+    elif 'Size' in avalanche_results:
+        sizes_key = 'Size'
+        durations_key = 'Duration'
+    else:
+        # No size data available
+        sizes_key = None
+        durations_key = None
+    
     # Overlay avalanche periods
-    if 'loc' in avalanche_results:
+    if 'loc' in avalanche_results and sizes_key:
         avalanche_locs = avalanche_results['loc']
-        avalanche_sizes = avalanche_results['Size']
-        avalanche_durations = avalanche_results['Duration']
+        avalanche_sizes = avalanche_results[sizes_key]
+        avalanche_durations = avalanche_results[durations_key]
         
         # Color avalanches by size
-        size_colors = plt.cm.jet(np.log(avalanche_sizes) / np.log(np.max(avalanche_sizes)))
-        
-        for i, (loc, size, duration) in enumerate(zip(avalanche_locs[:100], 
-                                                       avalanche_sizes[:100],
-                                                       avalanche_durations[:100])):
-            if time_window:
-                if loc >= time_window[0] and loc + duration <= time_window[1]:
-                    loc_adj = loc - time_window[0]
-                    rect = patches.Rectangle((loc_adj, 0), duration, n_neurons,
-                                           linewidth=0, edgecolor='none',
-                                           facecolor=size_colors[i], alpha=0.3)
-                    ax_main.add_patch(rect)
-            else:
-                if loc + duration <= n_timesteps:
-                    rect = patches.Rectangle((loc, 0), duration, n_neurons,
-                                           linewidth=0, edgecolor='none',
-                                           facecolor=size_colors[i], alpha=0.3)
-                    ax_main.add_patch(rect)
+        if len(avalanche_sizes) > 0:
+            size_colors = plt.cm.jet(np.log(avalanche_sizes + 1) / np.log(np.max(avalanche_sizes) + 1))
+            
+            for i, (loc, size, duration) in enumerate(zip(avalanche_locs[:100], 
+                                                           avalanche_sizes[:100],
+                                                           avalanche_durations[:100])):
+                if time_window:
+                    if loc >= time_window[0] and loc + duration <= time_window[1]:
+                        loc_adj = loc - time_window[0]
+                        rect = patches.Rectangle((loc_adj, 0), duration, n_neurons,
+                                               linewidth=0, edgecolor='none',
+                                               facecolor=size_colors[i], alpha=0.3)
+                        ax_main.add_patch(rect)
+                else:
+                    if loc + duration <= n_timesteps:
+                        rect = patches.Rectangle((loc, 0), duration, n_neurons,
+                                               linewidth=0, edgecolor='none',
+                                               facecolor=size_colors[i], alpha=0.3)
+                        ax_main.add_patch(rect)
     
     ax_main.set_xlabel('Time (steps)', fontsize=11)
     ax_main.set_ylabel('Neuron Index', fontsize=11)
@@ -1999,7 +2013,7 @@ def plot_avalanche_highlighted_matrix(raster, avalanche_results,
     
     # Mark avalanche starts
     if 'loc' in avalanche_results:
-        for loc in avalanche_locs[:100]:
+        for loc in avalanche_results['loc'][:100]:
             if time_window:
                 if loc >= time_window[0] and loc < time_window[1]:
                     ax_pop.axvline(loc - time_window[0], color='red', 
@@ -2014,36 +2028,44 @@ def plot_avalanche_highlighted_matrix(raster, avalanche_results,
     
     # Avalanche size distribution (right top)
     ax_size = fig.add_subplot(gs[0, 1])
-    if 'Size' in avalanche_results:
-        sizes = avalanche_results['Size']
-        ax_size.hist(np.log10(sizes + 1), bins=30, color='darkred', 
-                    alpha=0.7, edgecolor='black')
-        ax_size.set_xlabel('log₁₀(Size)', fontsize=10)
-        ax_size.set_ylabel('Count', fontsize=10)
-        ax_size.set_title('Avalanche Sizes', fontsize=11)
-        ax_size.grid(True, alpha=0.3)
+    if sizes_key and sizes_key in avalanche_results:
+        sizes = avalanche_results[sizes_key]
+        if len(sizes) > 0:
+            ax_size.hist(np.log10(sizes + 1), bins=30, color='darkred', 
+                        alpha=0.7, edgecolor='black')
+            ax_size.set_xlabel('log₁₀(Size)', fontsize=10)
+            ax_size.set_ylabel('Count', fontsize=10)
+            ax_size.set_title('Avalanche Sizes', fontsize=11)
+            ax_size.grid(True, alpha=0.3)
     
     # Avalanche duration distribution (right middle)
     ax_dur = fig.add_subplot(gs[1, 1])
-    if 'T' in avalanche_results:
-        durations = avalanche_results['T']
-        ax_dur.hist(np.log10(durations + 1), bins=30, color='darkgreen',
-                   alpha=0.7, edgecolor='black')
-        ax_dur.set_xlabel('log₁₀(Duration)', fontsize=10)
-        ax_dur.set_ylabel('Count', fontsize=10)
-        ax_dur.set_title('Avalanche Durations', fontsize=11)
-        ax_dur.grid(True, alpha=0.3)
+    if durations_key and durations_key in avalanche_results:
+        durations = avalanche_results[durations_key]
+        if len(durations) > 0:
+            ax_dur.hist(np.log10(durations + 1), bins=30, color='darkgreen',
+                       alpha=0.7, edgecolor='black')
+            ax_dur.set_xlabel('log₁₀(Duration)', fontsize=10)
+            ax_dur.set_ylabel('Count', fontsize=10)
+            ax_dur.set_title('Avalanche Durations', fontsize=11)
+            ax_dur.grid(True, alpha=0.3)
     
     # Statistics (bottom)
     ax_stats = fig.add_subplot(gs[2, :])
     ax_stats.axis('off')
-
-    stats_text = f"Total avalanches: {len(avalanche_results['Size'])} | "
-    stats_text += f"Mean size: {np.mean(avalanche_results['Size']):.1f} | "
-    stats_text += f"Max size: {np.max(avalanche_results['Size']):.0f} | "
-    stats_text += f"Mean duration: {np.mean(avalanche_results['Duration']):.1f} | "
-    stats_text += f"Max duration: {np.max(avalanche_results['Duration']):.0f}"
-
+    
+    if sizes_key and sizes_key in avalanche_results:
+        sizes = avalanche_results[sizes_key]
+        durations = avalanche_results[durations_key]
+        
+        stats_text = f"Total avalanches: {len(sizes)} | "
+        stats_text += f"Mean size: {np.mean(sizes):.1f} | "
+        stats_text += f"Max size: {np.max(sizes):.0f} | "
+        stats_text += f"Mean duration: {np.mean(durations):.1f} | "
+        stats_text += f"Max duration: {np.max(durations):.0f}"
+    else:
+        stats_text = "No avalanche statistics available"
+    
     ax_stats.text(0.5, 0.5, stats_text, transform=ax_stats.transAxes,
                  ha='center', va='center', fontsize=11,
                  bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
@@ -2143,6 +2165,7 @@ def plot_activity_with_avalanches(raster, avalanche_results, title="Activity wit
                                  save_path=None):
     """
     Plot activity matrix with avalanche periods highlighted.
+    Fixed to handle both key naming conventions.
     """
     n_neurons, n_timesteps = raster.shape
     max_time_display = min(5000, n_timesteps)
@@ -2172,48 +2195,73 @@ def plot_activity_with_avalanches(raster, avalanche_results, title="Activity wit
     im = axes[1].imshow(display_raster, aspect='auto', cmap='gray_r',
                        interpolation='nearest', origin='lower', alpha=0.8)
     
-    # Overlay avalanche periods with colors
-    if avalanche_results and all(k in avalanche_results for k in ['loc', 'Size', 'Duration']):
-        avalanche_locs = avalanche_results['loc']
-        avalanche_sizes = avalanche_results['Size']
-        avalanche_durations = avalanche_results['Duration']
-
-        # Normalize sizes for coloring
-        if len(avalanche_sizes) > 0:
-            size_norm = avalanche_sizes / np.max(avalanche_sizes)
+    # Determine which keys to use
+    if avalanche_results:
+        if 'S' in avalanche_results:
+            sizes_key = 'S'
+            durations_key = 'T'
+        elif 'Size' in avalanche_results:
+            sizes_key = 'Size'
+            durations_key = 'Duration'
+        else:
+            sizes_key = None
+            durations_key = None
+        
+        # Overlay avalanche periods with colors
+        if sizes_key and all(k in avalanche_results for k in ['loc', sizes_key, durations_key]):
+            avalanche_locs = avalanche_results['loc']
+            avalanche_sizes = avalanche_results[sizes_key]
+            avalanche_durations = avalanche_results[durations_key]
             
-            for i, (loc, size, duration) in enumerate(zip(
-                avalanche_locs[:50], avalanche_sizes[:50], avalanche_durations[:50]
-            )):
-                if loc + duration <= max_time_display:
-                    # Create colored rectangle for each avalanche
-                    color = plt.cm.jet(size_norm[i])
-                    rect = patches.Rectangle((loc, 0), duration, n_neurons,
-                                           linewidth=0, edgecolor='none',
-                                           facecolor=color, alpha=0.2)
-                    axes[1].add_patch(rect)
+            # Normalize sizes for coloring
+            if len(avalanche_sizes) > 0:
+                size_norm = avalanche_sizes / np.max(avalanche_sizes)
+                
+                for i, (loc, size, duration) in enumerate(zip(
+                    avalanche_locs[:50], avalanche_sizes[:50], avalanche_durations[:50]
+                )):
+                    if loc + duration <= max_time_display:
+                        # Create colored rectangle for each avalanche
+                        color = plt.cm.jet(size_norm[i])
+                        rect = patches.Rectangle((loc, 0), duration, n_neurons,
+                                               linewidth=0, edgecolor='none',
+                                               facecolor=color, alpha=0.2)
+                        axes[1].add_patch(rect)
     
     axes[1].set_xlabel('Time (steps)', fontsize=11)
     axes[1].set_ylabel('Neuron Index', fontsize=11)
     axes[1].set_xlim([0, max_time_display])
     
     # Bottom: Avalanche size timeline
-    if avalanche_results and 'loc' in avalanche_results and 'Size' in avalanche_results:
-        locs = avalanche_results['loc']
-        sizes = avalanche_results['Size']
-
-        # Only plot avalanches within display window
-        mask = locs < max_time_display
-        display_locs = locs[mask][:100]  # Limit to first 100
-        display_sizes = sizes[mask][:100]
+    if avalanche_results:
+        # Check which key to use
+        if 'S' in avalanche_results:
+            sizes_key = 'S'
+        elif 'Size' in avalanche_results:
+            sizes_key = 'Size'
+        else:
+            sizes_key = None
         
-        if len(display_locs) > 0:
-            axes[2].scatter(display_locs, display_sizes, alpha=0.5, s=20, c='darkred')
-            axes[2].set_yscale('log')
+        if 'loc' in avalanche_results and sizes_key:
+            locs = avalanche_results['loc']
+            sizes = avalanche_results[sizes_key]
+            
+            # Only plot avalanches within display window
+            mask = locs < max_time_display
+            display_locs = locs[mask][:100]  # Limit to first 100
+            display_sizes = sizes[mask][:100]
+            
+            if len(display_locs) > 0:
+                axes[2].scatter(display_locs, display_sizes, alpha=0.5, s=20, c='darkred')
+                axes[2].set_yscale('log')
+                axes[2].set_xlabel('Time (steps)', fontsize=11)
+                axes[2].set_ylabel('Avalanche Size', fontsize=10)
+                axes[2].set_xlim([0, max_time_display])
+                axes[2].grid(True, alpha=0.3)
+        else:
+            axes[2].text(0.5, 0.5, 'No avalanche data available', 
+                        ha='center', va='center', transform=axes[2].transAxes)
             axes[2].set_xlabel('Time (steps)', fontsize=11)
-            axes[2].set_ylabel('Avalanche Size', fontsize=10)
-            axes[2].set_xlim([0, max_time_display])
-            axes[2].grid(True, alpha=0.3)
     else:
         axes[2].text(0.5, 0.5, 'No avalanche data available', 
                     ha='center', va='center', transform=axes[2].transAxes)

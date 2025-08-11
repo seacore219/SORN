@@ -230,3 +230,71 @@ class StatsCollection:
             
             self.dlog.append(name,temp)
             del temp #Delete temp to ensure that we fail if coll is unknown
+
+
+class IncrementalStatsCollection(StatsCollection):
+    """Modified StatsCollection that handles chunk rotation"""
+    
+    def __init__(self, obj, dlog=None, rotate_interval=10000):
+        super(IncrementalStatsCollection, self).__init__(obj, dlog)
+        self.rotate_interval = rotate_interval
+        self.step_count = 0
+        self.chunk_id = 0
+        
+    def add(self):
+        """Modified to track steps and rotate files"""
+        if self.disable:
+            return
+            
+        # Call original add
+        super(IncrementalStatsCollection, self).add()
+        
+        self.step_count += 1
+        
+        # Rotate files at interval
+        if self.step_count % self.rotate_interval == 0:
+            self.rotate_chunks()
+    
+    def rotate_chunks(self):
+        """Rotate H5 files to prevent them from getting too large"""
+        print "[Rotate] Rotating chunks at step %d (chunk %d)" % (self.step_count, self.chunk_id)
+        
+        # Flush and close all H5 files in stats
+        for m in self.methods:
+            # Force flush if method has buffer
+            if hasattr(m, '_flush_buffer'):
+                m._flush_buffer()
+            
+            # Close and rename H5 file
+            if hasattr(m, 'h5_file') and m.h5_file:
+                m.h5_file.close()
+                
+                # Rename with chunk ID
+                old_path = m.h5_file.filename
+                new_path = old_path.replace('_temp.h5', '_chunk%03d.h5' % self.chunk_id)
+                if os.path.exists(old_path):
+                    os.rename(old_path, new_path)
+                    print "  Saved: %s" % os.path.basename(new_path)
+                
+                # Restart the file for next chunk
+                if hasattr(m, 'start'):
+                    m.start(self.c, self.obj)
+        
+        self.chunk_id += 1
+        
+        # Delete old chunks to save space (keep only last 2)
+        if self.chunk_id > 2:
+            self.cleanup_old_chunks()
+    
+    def cleanup_old_chunks(self):
+        """Remove old chunk files to save disk space"""
+        old_chunk_id = self.chunk_id - 3
+        
+        # Find and delete old chunk files
+        if hasattr(self.obj, 'c') and hasattr(self.obj.c, 'logfilepath'):
+            logpath = self.obj.c.logfilepath
+            for filename in os.listdir(logpath):
+                if '_chunk%03d.h5' % old_chunk_id in filename:
+                    filepath = os.path.join(logpath, filename)
+                    os.remove(filepath)
+                    print "  Cleaned up: %s" % filename

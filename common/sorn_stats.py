@@ -996,15 +996,66 @@ class EvokedPredStat(AbstractStat):
 
 ### spikes of the last 'only_last_steps'
 class SpikesStat(AbstractStat):
-    def __init__(self,inhibitory = False):
-        if inhibitory:
-            self.name = 'SpikesInh'
-            self.sattr = 'spikes_inh'
-        else:
-            self.name = 'Spikes'
-            self.sattr = 'spikes'
+    def __init__(self):
+        self.name = 'Spikes'
         self.collection = 'gather'
-        self.inh = inhibitory
+        self.h5_file = None
+        self.spike_array = None
+        self.buffer = []
+        self.buffer_size = 1000  # Write every 1000 steps
+        
+    def start(self, c, obj):
+        """Create H5 file for direct writing"""
+        # Create incremental H5 file
+        h5_path = os.path.join(obj.c.logfilepath, 'spikes_temp.h5')
+        self.h5_file = tables.open_file(h5_path, 'w')
+        
+        # Create expandable array
+        atom = tables.BoolAtom()
+        shape = (1, obj.c.N_e, 0)  # (1, neurons, timesteps)
+        self.spike_array = self.h5_file.create_earray(
+            self.h5_file.root, 'spikes',
+            atom, shape
+        )
+        
+    def clear(self, c, obj):
+        self.buffer = []
+        c.Spikes = []  # Keep for compatibility
+        
+    def add(self, c, obj):
+        # Add to buffer
+        self.buffer.append(obj.x.copy())
+        
+        # Write to disk when buffer is full
+        if len(self.buffer) >= self.buffer_size:
+            self._flush_buffer()
+    
+    def _flush_buffer(self):
+        """Write buffer to H5 file"""
+        if self.buffer and self.spike_array is not None:
+            # Convert to array and append
+            data = array(self.buffer).T[newaxis,...]  # Shape: (1, N_e, buffer_size)
+            self.spike_array.append(data.swapaxes(1,2))  # Append along time axis
+            self.h5_file.flush()
+            
+            print "[SpikesStat] Flushed %d timesteps to disk" % len(self.buffer)
+            self.buffer = []
+            
+    def report(self, c, obj):
+        # Flush remaining buffer
+        self._flush_buffer()
+        
+        # Close and reopen to read
+        if self.h5_file:
+            self.h5_file.close()
+            h5_path = self.h5_file.filename
+            h5 = tables.open_file(h5_path, 'r')
+            data = h5.root.spikes.read()
+            h5.close()
+            return data
+        
+        # Fallback
+        return array(c.Spikes).T[newaxis,...] if c.Spikes else array([[[]]]) 
     def clear(self,c,sorn):
         if self.inh:
             self.neurons = sorn.c.N_i
@@ -1223,47 +1274,55 @@ class SynapseFractionStat(AbstractStat):
 ### fraction of active conections between EE neurons
 class ConnectionFractionStat(AbstractStat):
     def __init__(self):
-        self.name = 'ConnectionFraction'
-        self.collection = 'gather'
-    def clear(self,c,sorn):
-        self.step = 0
-        if sorn.c.stats.has_key('only_last'):
-            self.cf = zeros(sorn.c.stats.only_last\
-                            +sorn.c.stats.only_last)
-        else:
-            self.cf = zeros(sorn.c.N_steps)
-    def add(self,c,sorn):
-        if sorn.c.stats.has_key('only_last'):
-            new_step = self.step \
-                        - (sorn.c.N_steps-sorn.c.stats.only_last)
-            if new_step >= 0:
-                if sorn.c.W_ee.use_sparse:
-                    self.cf[new_step+sorn.c.stats.only_last] = sum(\
-                        (sorn.W_ee.W.data>0)+0)/(sorn.c.N_e*sorn.c.N_e)
-                else:
-                    self.cf[new_step+sorn.c.stats.only_last] = sum(\
-                                    sorn.W_ee.M)/(sorn.c.N_e*sorn.c.N_e)
-            elif self.step%(sorn.c.N_steps\
-                    //sorn.c.stats.only_last) == 0:
-                if sorn.c.W_ee.use_sparse:
-                    self.cf[self.step//(sorn.c.N_steps\
-                        //sorn.c.stats.only_last)] = sum(\
-                        (sorn.W_ee.W.data>0)+0)/(sorn.c.N_e*sorn.c.N_e)
-                else:
-                    self.cf[self.step//(sorn.c.N_steps\
-                        //sorn.c.stats.only_last)] = sum(\
-                        sorn.W_ee.M)/(sorn.c.N_e*sorn.c.N_e)
-        else:
-            if sorn.c.W_ee.use_sparse:
-                self.cf[self.step] = sum((sorn.W_ee.W.data>0)+0)\
-                                        /(sorn.c.N_e*sorn.c.N_e)
-            else:
-                self.cf[self.step] = sum(sorn.W_ee.M)\
-                                        /(sorn.c.N_e*sorn.c.N_e)
-        self.step += 1
-    def report(self,c,sorn):
-        print '\n Report(ed) Connectionfraction'
-        return self.cf
+        self.name = 'connection_fraction'
+        self.collection = 'reduce'
+        self.h5_file = None
+        self.conn_array = None
+        self.buffer = []
+        self.buffer_size = 1000
+        
+    def start(self, c, obj):
+        h5_path = os.path.join(obj.c.logfilepath, 'connections_temp.h5')
+        self.h5_file = tables.open_file(h5_path, 'w')
+        
+        atom = tables.Float32Atom()
+        shape = (0,)  # 1D array
+        self.conn_array = self.h5_file.create_earray(
+            self.h5_file.root, 'connection_fraction',
+            atom, shape
+        )
+        
+    def clear(self, c, obj):
+        self.buffer = []
+        c.connection_fraction = []
+        
+    def add(self, c, obj):
+        W = obj.W_ee.W
+        conn_frac = sum(W > 0) / float(size(W))
+        self.buffer.append(conn_frac)
+        
+        if len(self.buffer) >= self.buffer_size:
+            self._flush_buffer()
+    
+    def _flush_buffer(self):
+        if self.buffer and self.conn_array is not None:
+            self.conn_array.append(array(self.buffer))
+            self.h5_file.flush()
+            print "[ConnectionFraction] Flushed %d timesteps" % len(self.buffer)
+            self.buffer = []
+            
+    def report(self, c, obj):
+        self._flush_buffer()
+        
+        if self.h5_file:
+            self.h5_file.close()
+            h5_path = self.h5_file.filename
+            h5 = tables.open_file(h5_path, 'r')
+            data = h5.root.connection_fraction.read()
+            h5.close()
+            return data
+            
+        return array(c.connection_fraction) if c.connection_fraction else array([])
 
 # TODO rewrite nicer for SPARSE
 class WeightLifetimeStat(AbstractStat):
