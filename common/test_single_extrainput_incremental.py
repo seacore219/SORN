@@ -15,6 +15,7 @@ import time
 import numpy as np
 import tables
 from importlib import import_module
+from chunking import modify_sorn_for_true_chunk_saving
 
 # Add parent directory to path
 sys.path.insert(1, "../")
@@ -349,7 +350,7 @@ def main():
     print("APPLYING ENHANCED INCREMENTAL SAVING")
     print("="*40)
     
-    sorn = modify_sorn_for_extrainput_incremental_saving(sorn, save_interval=10000)
+    sorn = modify_sorn_for_true_chunk_saving(sorn, save_interval=10000)
     
     print("Enhanced stats methods:")
     for i, method in enumerate(sorn.stats.methods):
