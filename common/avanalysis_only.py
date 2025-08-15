@@ -36,8 +36,8 @@ print("[INFO] Libraries imported successfully.")
 # CONFIGURATION
 # ============================================
 base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\delpapa_input\\batch_hip0.06_n6_ps1'
-starting_time_point = 6000000
-end_time_point = 8000000  # Set to None for full length
+starting_time_point = 2000000
+end_time_point = 4000000  # Set to None for full length
 
 # Avalanche analysis parameters
 AVALANCHE_PARAMS = {
@@ -1718,6 +1718,9 @@ def plot_activity_matrix_detailed(raster, time_window=None,
                                  save_path=None, title_prefix=""):
     """
     Create a detailed multi-panel visualization of the activity matrix.
+    Updated to:
+    - Use ALL neurons for correlation matrix (not subset)
+    - Plot ISI distribution in log-log scale
     
     Parameters:
     -----------
@@ -1802,16 +1805,19 @@ def plot_activity_matrix_detailed(raster, time_window=None,
     # 5. Firing rate distribution
     ax5 = fig.add_subplot(gs[2, 0])
     firing_rates = np.mean(raster, axis=1) * 1000  # Convert to Hz if needed
-    ax5.hist(firing_rates, bins=30, color='darkgreen', alpha=0.7, edgecolor='black')
-    ax5.axvline(np.mean(firing_rates), color='red', linestyle='--', 
-               label=f'Mean: {np.mean(firing_rates):.2f}')
+    # Remove zeros for better visualization
+    firing_rates_nonzero = firing_rates[firing_rates > 0]
+    if len(firing_rates_nonzero) > 0:
+        ax5.hist(firing_rates_nonzero, bins=30, color='darkgreen', alpha=0.7, edgecolor='black')
+        ax5.axvline(np.mean(firing_rates_nonzero), color='red', linestyle='--', 
+                   label=f'Mean: {np.mean(firing_rates_nonzero):.2f}')
     ax5.set_xlabel('Firing Rate', fontsize=10)
     ax5.set_ylabel('# Neurons', fontsize=10)
     ax5.set_title('Firing Rate Distribution', fontsize=11, fontweight='bold')
     ax5.legend()
     ax5.grid(True, alpha=0.3)
     
-    # 6. Inter-spike interval distribution
+    # 6. Inter-spike interval distribution (LOG-LOG SCALE)
     ax6 = fig.add_subplot(gs[2, 1])
     isis = []
     for i in range(n_neurons):
@@ -1820,26 +1826,81 @@ def plot_activity_matrix_detailed(raster, time_window=None,
             isis.extend(np.diff(spike_times))
     
     if isis:
-        ax6.hist(isis, bins=50, color='purple', alpha=0.7, edgecolor='black')
+        # Create histogram for log-log plot
+        isis = np.array(isis)
+        # Remove zeros if any
+        isis = isis[isis > 0]
+        
+        # Create log-spaced bins for better visualization
+        min_isi = np.min(isis)
+        max_isi = np.max(isis)
+        bins = np.logspace(np.log10(min_isi), np.log10(max_isi), 50)
+        
+        # Calculate histogram
+        hist, bin_edges = np.histogram(isis, bins=bins)
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        
+        # Plot in log-log scale
+        ax6.loglog(bin_centers, hist, 'o-', color='purple', markersize=4, 
+                  linewidth=1, alpha=0.7)
         ax6.set_xlabel('Inter-Spike Interval (steps)', fontsize=10)
         ax6.set_ylabel('Count', fontsize=10)
-        ax6.set_title('ISI Distribution', fontsize=11, fontweight='bold')
-        ax6.set_yscale('log')
-        ax6.grid(True, alpha=0.3)
+        ax6.set_title('ISI Distribution (log-log)', fontsize=11, fontweight='bold')
+        ax6.grid(True, alpha=0.3, which='both')
+        
+        # Add power law fit line if there's a clear trend
+        # Only fit to the middle portion to avoid edge effects
+        valid_mask = (hist > 0) & (bin_centers > np.percentile(isis, 10)) & (bin_centers < np.percentile(isis, 90))
+        if np.sum(valid_mask) > 5:  # Need at least 5 points for a reasonable fit
+            from scipy.stats import linregress
+            log_x = np.log10(bin_centers[valid_mask])
+            log_y = np.log10(hist[valid_mask])
+            slope, intercept, r_value, p_value, std_err = linregress(log_x, log_y)
+            
+            # Plot fit line
+            fit_x = np.logspace(np.log10(bin_centers[valid_mask].min()), 
+                               np.log10(bin_centers[valid_mask].max()), 100)
+            fit_y = 10**(intercept) * fit_x**slope
+            ax6.plot(fit_x, fit_y, 'r--', alpha=0.5, linewidth=1.5,
+                    label=f'Slope: {slope:.2f}')
+            ax6.legend()
+    else:
+        ax6.text(0.5, 0.5, 'No ISI data available', 
+                ha='center', va='center', transform=ax6.transAxes)
     
-    # 7. Correlation matrix (subset for visibility)
+    # 7. FULL Correlation matrix (NO SUBSET!)
     ax7 = fig.add_subplot(gs[2, 2])
-    # Take a subset of neurons for correlation calculation
-    subset_size = min(200, n_neurons)
-    subset_raster = raster[:subset_size, :]
-    corr_matrix = np.corrcoef(subset_raster)
+    
+    print(f"Computing correlation matrix for ALL {n_neurons} neurons...")
+    # Compute correlation for ALL neurons
+    corr_matrix = np.corrcoef(raster)
+    
+    # Replace NaN values (from neurons with no activity) with 0
+    corr_matrix = np.nan_to_num(corr_matrix, nan=0.0)
+    
+    # Plot the full correlation matrix
     im7 = ax7.imshow(corr_matrix, cmap='RdBu_r', vmin=-1, vmax=1,
                     aspect='auto', interpolation='nearest')
-    ax7.set_title(f'Correlation Matrix (first {subset_size} neurons)', 
+    ax7.set_title(f'Correlation Matrix (ALL {n_neurons} neurons)', 
                  fontsize=11, fontweight='bold')
     ax7.set_xlabel('Neuron', fontsize=9)
     ax7.set_ylabel('Neuron', fontsize=9)
+    
+    # Add some tick marks to show scale
+    n_ticks = min(5, n_neurons)
+    tick_positions = np.linspace(0, n_neurons-1, n_ticks, dtype=int)
+    ax7.set_xticks(tick_positions)
+    ax7.set_yticks(tick_positions)
+    ax7.set_xticklabels(tick_positions, fontsize=8)
+    ax7.set_yticklabels(tick_positions, fontsize=8)
+    
     plt.colorbar(im7, ax=ax7, fraction=0.046)
+    
+    # Add text annotation about correlation strength
+    mean_corr = np.mean(np.abs(corr_matrix[np.triu_indices(n_neurons, k=1)]))
+    ax7.text(0.02, 0.98, f'Mean |r| = {mean_corr:.3f}', 
+            transform=ax7.transAxes, fontsize=8, verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     # Overall title
     suptitle = f'{title_prefix} Activity Matrix Analysis' if title_prefix else 'Activity Matrix Analysis'
