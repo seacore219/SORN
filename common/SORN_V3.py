@@ -10,7 +10,7 @@ class SORN:
     """
     Self-Organizing Recurrent Network (SORN) implementation
     Based on: https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0178683
-    """
+    """ 
     
     def __init__(self, 
                  N_E: int = 200,

@@ -1,0 +1,40 @@
+{
+  "run_id": "seed_6",
+  "seed": 45957,
+  "parameters": {
+    "N_E": 200,
+    "N_I": 40,
+    "eta_stdp": 0.004,
+    "eta_istdp": 0.001,
+    "eta_ip": 0.01,
+    "lambda_": 20,
+    "noise_sig": 0.22360679774997896,
+    "T_e_min": 0.0,
+    "T_e_max": 0.5,
+    "T_i_min": 0.0,
+    "T_i_max": 1.0,
+    "W_ee_initial": 0.001,
+    "W_min": 0.0,
+    "W_max": 1.0,
+    "W_ei_min": 0.001,
+    "h_ip": 0.1
+  },
+  "sim_steps": 6000000,
+  "final_activity_E": 0.225,
+  "final_activity_I": 0.275,
+  "final_mean_threshold_E": 0.2512998777168598,
+  "final_mean_threshold_I": 0.46331115245163546,
+  "final_connection_fraction": 0.054773869346733665,
+  "final_mean_weight": 0.09174311926605505,
+  "eigenvalue_analysis": {
+    "checkpoint_step": 2000000,
+    "spectral_radius": 1.0000000000000027,
+    "n_unstable": 1,
+    "max_real_part": 1.0000000000000027,
+    "mean_magnitude": 0.15308838948176895,
+    "std_magnitude": 0.3553689888535803,
+    "activity_E_at_checkpoint": 0.03,
+    "activity_I_at_checkpoint": 0.05,
+    "connection_fraction_at_checkpoint": 0.05442211055276382
+  }
+}

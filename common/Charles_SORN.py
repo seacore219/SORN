@@ -9,14 +9,11 @@ from datetime import datetime
 import multiprocessing as mp
 import time
 
-class SORN:
-    """
-    Self-Organizing Recurrent Network (SORN) implementation
-    Based on: Zheng & Triesch (2014) - A robust self-organizing neural network model
-    
-    Fixed to be more faithful to the original paper implementation
-    """
-    
+##################################################################################
+                           ###  Model Logic (L16-316)  ###
+##################################################################################
+
+class SORN:    
     def __init__(self, 
                  N_E: int = 200,
                  N_I: int = 40,
@@ -35,11 +32,6 @@ class SORN:
                  W_min: float = 0.0,  # Minimum weight value
                  W_max: float = 1.0,  # Maximum weight value
                  W_ei_min: float = 0.001):  # Minimum weight for W_EI (never fully remove inhibition)
-        """
-        Initialize SORN network with parameters closer to the original paper
-        
-        Parameters match those in Zheng & Triesch (2014)
-        """
         
         # Network size
         self.N_E = N_E
@@ -85,9 +77,7 @@ class SORN:
         # Initialize network components
         self._initialize_network()
         
-    def _initialize_network(self):
-        """Initialize all network components following the paper"""
-        
+    def _initialize_network(self):     
         # Initialize state vectors
         # Excitatory neurons start with probability h_ip of being active
         self.x = np.random.rand(self.N_E) < self.h_ip
@@ -107,9 +97,7 @@ class SORN:
         # Initialize weight matrices
         self._initialize_weights()
         
-    def _initialize_weights(self):
-        """Initialize synaptic weight matrices with proper sparsity"""
-        
+    def _initialize_weights(self):    
         # W_EE: Excitatory to excitatory (sparse)
         self.W_EE = self._create_sparse_matrix(
             self.N_E, self.N_E, self.p_ee, avoid_self=True
@@ -136,11 +124,7 @@ class SORN:
         
     def _create_sparse_matrix(self, rows: int, cols: int, p: float, 
                             avoid_self: bool = False) -> np.ndarray:
-        """
-        Create sparse weight matrix with connection probability p
-        Ensures each neuron has at least one input connection
-        """
-        
+                
         # Create connection mask
         mask = np.random.rand(rows, cols) < p
         
@@ -163,10 +147,6 @@ class SORN:
         return W
         
     def _normalize_weights(self):
-        """
-        Normalize all incoming weights to sum to 1 for each neuron
-        This maintains the balance of excitation and inhibition
-        """
         
         # Normalize W_EE (sum of incoming weights = 1)
         row_sums = self.W_EE.sum(axis=1)
@@ -191,8 +171,6 @@ class SORN:
     
     def step(self, u_new: Optional[np.ndarray] = None):
         """
-        Perform one update step of the SORN network
-        
         Parameters:
         -----------
         u_new : np.ndarray, optional
@@ -265,7 +243,7 @@ class SORN:
         Intrinsic Plasticity: Adjust thresholds to maintain target firing rate
         ΔT_i^E = η_IP * (x_i - h_IP)
         """
-        
+
         # Update thresholds
         self.T_E += self.eta_ip * (x_new - self.h_ip)
         
@@ -294,7 +272,7 @@ class SORN:
         # Apply weight bounds
         self.W_EE = np.clip(self.W_EE, self.W_min, self.W_max)
         
-        # Important: Only remove connections that are effectively zero
+        # Only remove connections that are effectively zero
         # This prevents over-pruning of the network
         self.W_EE[self.W_EE < 1e-10] = 0
         
@@ -336,6 +314,11 @@ class SORN:
                 
                 # Create new connection with initial weight
                 self.W_EE[i, j] = self.W_ee_initial
+
+
+##################################################################################
+   ###  Plotting, Data Processing, Memory Efficiency Functions (L323-1791) ###
+##################################################################################
                 
     def get_connection_fraction(self) -> float:
         """Calculate fraction of active connections in W_EE"""
@@ -1807,17 +1790,19 @@ def plot_raster_with_activity_coarsegrained_both(filename: str,
         
         print(f"Coarse-grained raster with E and I activity saved to {save_path}")
 
-# Add this to the end of the previous code after all the function definitions
+##################################################################################
+                             ###  Main (L1797-2026) ###
+##################################################################################       
 
 if __name__ == "__main__":
-    # ========== SWEEP CONFIGURATION - CHANGE EVERYTHING HERE ==========
+    # =========================================================
     PARAM_TO_SWEEP = 'h_ip'  # or 'noise_sig', 'eta_stdp', etc.
     PARAM_VALUES = [0.1]  # Sweep across multiple h_ip values
     N_SEEDS_PER_VALUE = 10
     SIM_STEPS = 6000000
     EIGENVALUE_CHECKPOINT = 2000000
     USE_CORES_PERCENT = 0.5  
-    # ==================================================================
+    # ==========================================================
     
     # Calculate number of processes based on percentage
     total_cores = mp.cpu_count()
