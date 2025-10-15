@@ -41,7 +41,7 @@ print("[INFO] all libraries imported successfully.")
 print("[INFO] Searching for directories with simulation results...")
 ## Need to find all the directories where there are valid sims
 # base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\GitHub\\SORN\\mu=0.02_sigma=0.05_500K+3.5M_plastic_raster\\test_single'
-base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\noisevar\\finegrain\\batch_hip0.0800_fp0.001_cde0.10_cdi0.00_noise0.06'
+base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\finegrain\\posterfiles\\batch_hip0.2000_fp0.00_cde0.00_cdi0.00'
 # base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\CharlesSORNneo\\backup\\test_single\\batch_hip0.0075_fp0.01_cde0.01_cdi0.01
 # base_dir = 'C:\\Users\\seaco\\Downloads\\sims\\randn_10%_e_hip0.2_uext0.2'
 #pattern = r"SPmu=(\d+\.\d+)_sigma=(\d+\.\d+base_).*_raster"
@@ -897,40 +897,50 @@ def correlations_with_shuffling(raster, lag=1, plot_eigenvalues=False, save_plot
 
 ##############################################################
 # Function to compute power spectrum
-def welch_psd(raster_data, fs=1000, nperseg=10000, x1=0, x2=1, plot=False, save_plot=True, filename=os.path.join(base_dir, 'psd_plot.pdf')):
+def welch_psd(raster_data, fs=1000, nperseg=10000, x1=0, x2=1, use_fit=True, plot=False, save_plot=True, filename=os.path.join(base_dir, 'psd_plot.pdf')):
     """
     Compute the Power Spectral Density (PSD) using Welch's method.
     
     :param raster_data: 2D numpy array where each row is a time series for a given neuron.
     :param fs: Sampling frequency in Hz.
-    :param nperseg: Length of each segment for Welch's method (buiilt in function, maybe we can try others later).
-    :param x1, x2: Lower and upper bounds of the frequency region to fit.
+    :param nperseg: Length of each segment for Welch's method.
+    :param x1, x2: Lower and upper bounds of the frequency region to fit (only used if use_fit=True).
+    :param use_fit: Boolean, whether to perform power-law fitting. Default is True.
     :param plot: Boolean, whether to display the plot.
     :param save_plot: Boolean, whether to save the plot as a PDF.
     :param filename: String, name of the file to save the plot.
-    :return: Frequencies, PSD, and slope of the fit in the specified region.
+    :return: If use_fit=True: Frequencies, PSD, and slope of the fit. If use_fit=False: Frequencies and PSD only.
     """
     # Collapse the raster data into one time series
     collapsed_series = np.sum(raster_data, axis=0)
     
-    # Compute PSD using Welch's method (you can change the overlap window, but by default it does the nperseg/2 which is fine)
+    # Compute PSD using Welch's method
     f, psd = welch(collapsed_series, fs, nperseg=nperseg, noverlap=None)
 
-    # Convert data to logarithmic scale
-    log_f = np.log10(f[f > 0])  # avoid log(0) by ensuring frequencies are > 0
-    log_psd = np.log10(psd[f > 0])
+    slope = None  # Initialize slope as None
+    
+    if use_fit:
+        # Convert data to logarithmic scale
+        log_f = np.log10(f[f > 0])  # avoid log(0) by ensuring frequencies are > 0
+        log_psd = np.log10(psd[f > 0])
 
-    # Define the region for fitting
-    index1 = (log_f > x1) & (log_f < x2)  # Example region 1
+        # Define the region for fitting
+        index1 = (log_f > x1) & (log_f < x2)
 
-    # Fit linear model to the region
-    slope, intercept = np.polyfit(log_f[index1], log_psd[index1], 1)
+        # Fit linear model to the region
+        slope, intercept = np.polyfit(log_f[index1], log_psd[index1], 1)
 
     # Plotting stuff
     if plot or save_plot:
         plt.figure(figsize=(10, 6))
-        plt.loglog(f, psd, label='Original PSD')
-        plt.loglog(10**log_f[index1], 10**(log_f[index1]*slope + intercept), 'r-', label=f'Fit: slope={slope:.2f}')
+        plt.loglog(f, psd, label='PSD')
+        
+        if use_fit:
+            log_f = np.log10(f[f > 0])
+            log_psd = np.log10(psd[f > 0])
+            index1 = (log_f > x1) & (log_f < x2)
+            plt.loglog(10**log_f[index1], 10**(log_f[index1]*slope + intercept), 'r-', label=f'Fit: slope={slope:.2f}')
+        
         plt.xlabel('Frequency (Hz)')
         plt.ylabel('Power Spectral Density (dB/Hz)')
         plt.title('Power Spectral Density')
@@ -942,7 +952,10 @@ def welch_psd(raster_data, fs=1000, nperseg=10000, x1=0, x2=1, plot=False, save_
             plt.show()
         plt.close()
 
-    return f, psd, slope
+    if use_fit:
+        return f, psd, slope
+    else:
+        return f, psd, None
 
 #################################
 import matplotlib.pyplot as plt
@@ -2239,6 +2252,8 @@ if True :
     susc, rho_values, cv_values, br_method_1, br_method_2, br_priesman = [], [], [], [], [], []
     pearson_kappa = []
     d2_values, ar_orders = [], []
+    psd_slopes = []
+    USE_PSD_FIT = False  # Set to True to enable PSD fitting
 
     # Initialize arrays to store all avalanches
     all_burst = np.array([])
@@ -2251,7 +2266,7 @@ if True :
     print(f"[INFO] Located {len(h5_files)} .h5 simulation files to process.")
     if(len(h5_files) > 0):
 
-        # Replace the section starting from around line 2240 to 2460 with this:
+        
 
         # Initialize lists to store individual values from each file
         individual_susc = []
@@ -2262,6 +2277,7 @@ if True :
         individual_priesman_br = []
         individual_d2 = []
         individual_ar_order = []
+        individual_psd_slopes = []
 
         # Process each H5 file
         for file_path in h5_files:
@@ -2347,6 +2363,42 @@ if True :
                                                    save_plot=False, saveloc='', pltname='analysis', state = '')
                     print(f"Maximum eigenvalue: {max_eig}")
                     pearson_kappa.append(max_eig)
+
+                    ######################
+                    # Power Spectral Density Analysis
+                    ######################
+                    print("Computing power spectral density...")
+
+                    # Extract filename for unique naming
+                    file_basename = os.path.basename(file_path).replace('.h5', '')
+                    psd_filename = os.path.join(base_dir, f'psd_{file_basename}.pdf')
+
+                    # Call the welch_psd function with toggle
+                    if USE_PSD_FIT:
+                        f_psd, psd, psd_slope = welch_psd(
+                            raster_data=raster,
+                            fs=1000,  # 1 kHz sampling rate
+                            nperseg=10000,  # 10-second windows
+                            x1=0,  # 10^0 = 1 Hz
+                            x2=2,  # 10^2 = 100 Hz
+                            use_fit=True,
+                            plot=True,
+                            save_plot=True,
+                            filename=psd_filename
+                        )
+                        
+                    else:
+                        f_psd, psd, _ = welch_psd(
+                            raster_data=raster,
+                            fs=1000,  # 1 kHz sampling rate
+                            nperseg=10000,  # 10-second windows
+                            use_fit=False,
+                            plot=True,
+                            save_plot=True,
+                            filename=psd_filename
+                        )
+                        
+                        print(f"-- PSD computed successfully (no fitting)")
 
                     ######################
                     # D2 Analysis 
@@ -2472,6 +2524,15 @@ if True :
                 f.write(f"Mean d2: {np.mean(individual_d2):.4f}\n")
                 f.write(f"Individual AR Orders: {individual_ar_order}\n")
                 f.write(f"Mean AR Order: {np.mean(individual_ar_order):.1f}\n")
+            
+                if USE_PSD_FIT and individual_psd_slopes:
+                    f.write(f"Individual PSD Slopes: {individual_psd_slopes}\n")
+                    f.write(f"Mean PSD Slope: {np.mean(individual_psd_slopes):.4f}\n")
+                    f.write(f"Mean Power Law Exponent a: {-np.mean(individual_psd_slopes):.4f}\n")
+                else:
+                    f.write(f"PSD analysis performed without fitting.\n")
+                        
+                print(f"\nMetrics saved to: {text_output_path}")
             else:
                 f.write("No valid data processed.\n")
             
@@ -2654,6 +2715,9 @@ for i in range(len(mu_values)):
         f.write(f"AV Beta (duration exponent): {overall_av_beta[i]:.4f}\n")
         f.write(f"AV Scaling difference: {overall_av_df[i]:.4f}\n")
         f.write("-" * 60 + "\n")
+        f.write(f"Individual PSD Slopes: {individual_psd_slopes}\n")
+        f.write(f"Mean PSD Slope: {np.mean(individual_psd_slopes):.4f}\n")
+        f.write(f"Mean Power Law Exponent a: {-np.mean(individual_psd_slopes):.4f}\n")
 
     print(f"Metrics for Mu = {mu_values[i]:.2f} saved to: {text_output_path}")
 

@@ -1,0 +1,30 @@
+{
+  "param_ranges": {
+    "h_ip": [
+      0.1
+    ]
+  },
+  "base_params": {
+    "N_E": 200,
+    "N_I": 40,
+    "eta_stdp": 0.004,
+    "eta_istdp": 0.001,
+    "eta_ip": 0.0001,
+    "lambda_": 20,
+    "noise_sig": 0.22360679774997896,
+    "T_e_min": 0.0,
+    "T_e_max": 0.5,
+    "T_i_min": 0.0,
+    "T_i_max": 1.0,
+    "W_ee_initial": 0.001,
+    "W_min": 0.0,
+    "W_max": 1.0,
+    "W_ei_min": 0.001
+  },
+  "sim_steps": 6000000,
+  "eigenvalue_checkpoint": 2000000,
+  "n_seeds": 10,
+  "total_runs": 10,
+  "timestamp": "20250909_223125",
+  "base_seed": 475085
+}

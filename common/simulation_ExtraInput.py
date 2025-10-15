@@ -118,7 +118,7 @@ def organize_simulation_results(batch_folder, num_sims, root_dir):
     
     # Find and move simulation folders
     moved_count = 0
-    test_single_dir = os.path.join(backup_dir, "test_single")
+    test_single_dir = os.path.join(backup_dir, "test_single_original")
     
     print("Looking for simulation folders in: %s" % test_single_dir)
     
@@ -273,7 +273,7 @@ def run_parallel_simulations(num_sims=8, num_processes=None, show_output=True,
     python_exe = find_python27()
     print("Using Python:", python_exe)
     
-    test_single = os.path.join(common_dir, "test_single_autosave.py")
+    test_single = os.path.join(common_dir, "test_single.py")
     param_file_path = os.path.join(root_dir, "delpapa", param_file)
     
     if not os.path.exists(test_single):

@@ -11,89 +11,122 @@ import h5py
 import os
 from tempfile import TemporaryFile
 import glob
+import tables  # Add this import for .h5 files created by PyTables
 
 import matplotlib.ticker as mtick
 import matplotlib.patches as patches
 from matplotlib import gridspec
 
+# Configuration - set your file path here
+SORN_H5_PATH = r'C:\Users\seaco\OneDrive\Documents\Charles\SORN_PC\backup\test_single\peptember2\2025-09-10 23-51-01\common\result.h5'
+
 def find_first_sorn_h5():
-    """Find the first spiking_data.h5 file from SORN runs"""
-    # Start from script location
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    """Use configured SORN h5 file path"""
+    if not os.path.exists(SORN_H5_PATH):
+        raise ValueError(f"File not found: {SORN_H5_PATH}")
     
-    # Navigate to common directory where SORN results are stored
-    common_dir = os.path.join(script_dir, '..', '..', 'common')
-    common_dir = os.path.abspath(common_dir)
-    
-    print(f"Looking for SORN results in: {common_dir}")
-    
-    # Find the most recent h_ip_sweep directory
-    sweep_dirs = glob.glob(os.path.join(common_dir, 'h_ip_sweep_eigenvalues_*'))
-    if not sweep_dirs:
-        raise ValueError(f"No h_ip_sweep_eigenvalues directories found in {common_dir}")
-    
-    # Use the most recent one
-    latest_sweep = sorted(sweep_dirs)[-1]
-    print(f"Using sweep directory: {latest_sweep}")
-    
-    # Navigate to the h_ip_0.1 runs
-    h_ip_dir = os.path.join(latest_sweep, 'sweep_eigenvalues_*', 'h_ip_0.1')
-    h_ip_dirs = glob.glob(h_ip_dir)
-    
-    if not h_ip_dirs:
-        raise ValueError(f"No h_ip_0.1 directory found in {latest_sweep}")
-    
-    h_ip_dir = h_ip_dirs[0]
-    
-    # Find first run_seed directory
-    run_dirs = sorted(glob.glob(os.path.join(h_ip_dir, 'run_seed_*')))
-    if not run_dirs:
-        raise ValueError(f"No run_seed directories found in {h_ip_dir}")
-    
-    # Use the first run
-    first_run = run_dirs[0]
-    h5_path = os.path.join(first_run, 'spiking_data.h5')
-    
-    if not os.path.exists(h5_path):
-        raise ValueError(f"No spiking_data.h5 found in {first_run}")
-    
-    print(f"Using h5 file: {h5_path}")
-    return h5_path, h_ip_dir
+    print(f"Using h5 file: {SORN_H5_PATH}")
+    return SORN_H5_PATH, os.path.dirname(SORN_H5_PATH)
 
 # Find the h5 file to use
 h5_path, output_dir = find_first_sorn_h5()
 
 # Load data from SORN h5 file
 print('Loading SORN data...')
-with h5py.File(h5_path, 'r') as f:
-    # Get network parameters
-    N_E = f.attrs['N_E']
-    n_timesteps = f.attrs['n_timesteps']
+
+# First, let's check if this is an HDF5 or PyTables file
+try:
+    # Try h5py first
+    with h5py.File(h5_path, 'r') as f:
+        print("File opened with h5py")
+        print("File structure:")
+        print("Attributes:", list(f.attrs.keys()))
+        print("Datasets/Groups:", list(f.keys()))
+        use_h5py = True
+except:
+    # If h5py fails, try PyTables
+    print("h5py failed, trying PyTables...")
+    use_h5py = False
+
+if use_h5py:
+    with h5py.File(h5_path, 'r') as f:
+        # Get network parameters
+        # Your file seems to be PyTables format opened with h5py
+        if 'c' in f:
+            # Access PyTables-style data
+            c_group = f['c']
+            N_E = c_group['N_e'][0] if 'N_e' in c_group else 1000
+            # Get timesteps from stats
+            if 'stats' in c_group and 'only_last_spikes' in c_group['stats']:
+                n_timesteps = c_group['stats']['only_last_spikes'][0]
+            else:
+                # Get from spike data shape
+                n_timesteps = f['Spikes'].shape[2]
+        else:
+            N_E = 1000
+            n_timesteps = f['Spikes'].shape[2]
+        
+        print(f"N_E: {N_E}, n_timesteps: {n_timesteps}")
+        
+        # Load connection fraction data
+        if 'connection_fraction' in f:
+            connec_frac_data = f['connection_fraction'][:]
+            print(f"Connection fraction shape: {connec_frac_data.shape}")
+            print(f"Connection fraction first few values: {connec_frac_data[:5]}")
+            
+            # Handle different possible formats
+            if connec_frac_data.ndim == 1:
+                connec_frac = connec_frac_data
+            else:
+                connec_frac = connec_frac_data.flatten()
+        else:
+            print("Warning: connection_fraction not found, using dummy data")
+            connec_frac = np.ones(100) * 0.1
+            
+        record_interval = n_timesteps // len(connec_frac) if len(connec_frac) > 1 else n_timesteps
+        
+        # Load spike data
+        plot_last_steps = 150
+        
+        # Get actual dimensions of spike data
+        spike_shape = f['Spikes'].shape
+        print(f"Spikes shape: {spike_shape}")
+        
+        # Adjust indices based on actual data
+        actual_timesteps = spike_shape[2]
+        start_idx = max(0, actual_timesteps - plot_last_steps - 100)
+        end_idx = actual_timesteps - 100
+        
+        # Load spikes - format is [batch, neurons, time]
+        spikes = f['Spikes'][0, :N_E, start_idx:end_idx].T
+        activity = np.sum(spikes, axis=1)
+
+# Convert to actual timesteps
+connec_frac_timesteps = np.arange(len(connec_frac)) * record_interval
+
+# Interpolate to all timesteps for plotting
+from scipy.interpolate import interp1d
+
+# Determine the target length for the plot (first 4M steps or available data)
+plot_length = min(n_timesteps, int(4e6))
+
+if len(connec_frac) > 1 and len(connec_frac_timesteps) > 1:
+    # Ensure we don't extrapolate beyond available data
+    max_time = min(connec_frac_timesteps[-1], plot_length)
+    time_points = np.arange(0, max_time, 1000)  # Sample every 1000 steps for efficiency
     
-    # Load connection fraction data
-    connec_frac = f['connection_fraction'][:]
-    record_interval = f.attrs.get('record_interval', 1000)
-    
-    # Convert to actual timesteps
-    connec_frac_timesteps = np.arange(len(connec_frac)) * record_interval
-    
-    # Interpolate to all timesteps for plotting
-    from scipy.interpolate import interp1d
-    if len(connec_frac) > 1:
-        f_interp = interp1d(connec_frac_timesteps, connec_frac, 
-                           kind='linear', fill_value='extrapolate')
-        connec_frac_full = f_interp(np.arange(n_timesteps))
-    else:
-        connec_frac_full = np.ones(n_timesteps) * connec_frac[0]
-    
-    # Load activity data for the last part
-    plot_last_steps = 150
-    start_idx = n_timesteps - plot_last_steps - 100
-    end_idx = n_timesteps - 100
-    
-    # Calculate activity from spikes
-    spikes = f['spikes_E'][start_idx:end_idx]
-    activity = np.sum(spikes, axis=1)  # Number of active neurons per timestep
+    f_interp = interp1d(connec_frac_timesteps[connec_frac_timesteps <= max_time], 
+                       connec_frac[:len(connec_frac_timesteps[connec_frac_timesteps <= max_time])], 
+                       kind='linear', fill_value='extrapolate', bounds_error=False)
+    connec_frac_full = f_interp(time_points)
+    time_axis_plot = time_points
+else:
+    # If only one value, create constant array
+    time_axis_plot = np.arange(0, plot_length, 1000)
+    connec_frac_full = np.ones_like(time_axis_plot) * connec_frac.flat[0]
+
+print(f"connec_frac_full shape: {connec_frac_full.shape}")
+print(f"time_axis_plot shape: {time_axis_plot.shape}")
 
 # Set threshold for avalanche detection
 Theta = 10
@@ -104,7 +137,7 @@ height = 3
 fig = figure(1, figsize=(width, height))
 gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.7])
 letter_size = 13
-letter_size_panel = 15  # Added this line
+letter_size_panel = 15
 line_width = 1.0
 
 c_size = '#B22400'
@@ -116,36 +149,38 @@ c_notstable = '#7887AB'
 # Fig. 1A: CONNECTION FRACTION
 fig_1a = subplot(gs[0])
 
-# Determine phases based on time (you may need to adjust these based on your data)
-phase1_end = int(2e6)  # First 2M steps for growth/decay
-phase2_end = int(4e6)  # Next 2M steps for stable
+# Determine phases based on time
+phase1_end = int(2e6)
+phase2_end = int(4e6)
 
-# Plot different phases
-time_axis = np.arange(len(connec_frac_full))
-mask1 = time_axis < phase1_end
-mask2 = (time_axis >= phase1_end) & (time_axis < phase2_end)
+# Plot different phases using the corrected time axis
+mask1 = time_axis_plot < phase1_end
+mask2 = (time_axis_plot >= phase1_end) & (time_axis_plot < phase2_end)
 
-plot(time_axis[mask1], connec_frac_full[mask1]*100, c_notstable, linewidth=line_width)
-plot(time_axis[mask2], connec_frac_full[mask2]*100, c_stable, linewidth=line_width)
+plot(time_axis_plot[mask1], connec_frac_full[mask1]*100, c_notstable, linewidth=line_width)
+plot(time_axis_plot[mask2], connec_frac_full[mask2]*100, c_stable, linewidth=line_width)
 
-### annotate stuff
-# Find appropriate positions for annotations based on actual data
-early_idx = int(2e5)
-mid_idx = int(8e5)
-late_idx = int(2.6e6)
+# Find closest indices for annotations
+early_time = 2e5
+mid_time = 8e5
+late_time = 2.6e6
+
+early_idx = np.argmin(np.abs(time_axis_plot - early_time))
+mid_idx = np.argmin(np.abs(time_axis_plot - mid_time))
+late_idx = np.argmin(np.abs(time_axis_plot - late_time))
 
 if early_idx < len(connec_frac_full):
-    text(2e5, connec_frac_full[early_idx]*100 - 2, r'decay', 
+    text(early_time, connec_frac_full[early_idx]*100 - 2, r'decay', 
          fontsize=letter_size, color=c_notstable)
 if mid_idx < len(connec_frac_full):
-    text(8e5, connec_frac_full[mid_idx]*100 + 1, r'growth', 
+    text(mid_time, connec_frac_full[mid_idx]*100 + 1, r'growth', 
          fontsize=letter_size, color=c_notstable)
 if late_idx < len(connec_frac_full):
-    text(2.6e6, connec_frac_full[late_idx]*100 + 0.5, r'stable', 
+    text(late_time, connec_frac_full[late_idx]*100 + 0.5, r'stable', 
          fontsize=letter_size, color=c_stable)
 
 # axis stuff
-xlim([0, min(4e6, n_timesteps)])
+xlim([0, min(4e6, time_axis_plot[-1])])
 ylim([0, 20])
 
 fig_1a.spines['right'].set_visible(False)
@@ -201,7 +236,6 @@ fig_1b.add_patch(arrow4)
 
 ### axis stuff
 xlim([0, plot_last_steps])
-# Set ylim based on actual activity range
 ylim([0, max(50, activity.max() * 1.2)])
 
 fig_1b.spines['right'].set_visible(False)

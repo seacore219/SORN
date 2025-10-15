@@ -1825,7 +1825,7 @@ if __name__ == "__main__":
         'N_I': 40,
         'eta_stdp': 0.004,
         'eta_istdp': 0.001,
-        'eta_ip': 0.01,
+        'eta_ip': 0.0001,
         'lambda_': 20,
         'noise_sig': np.sqrt(0.05),
         'T_e_min': 0.0,

@@ -34,10 +34,10 @@ c.steps_plastic = 2500000 # steps before the perturbation
 c.steps_perturbation = 3500000 # steps after the perturbation
 c.N_steps = (c.steps_plastic + c.steps_perturbation)
 c.N_iterations = 1
-c.eta_ip = 0.01
-c.h_ip = 0.02
-c.noise_sig_i = np.sqrt(0.1)
-c.noise_sig_e = np.sqrt(0.1)
+c.eta_ip = 0.0001
+c.h_ip = 0.06
+c.noise_sig_i = np.sqrt(0.05)
+c.noise_sig_e = np.sqrt(0.05)
 c.noise_fire = 0
 c.noise_fire_struc = 0
 
@@ -58,7 +58,7 @@ perturbation_source = sources.RandomBurstSource(
     input_values_i=0,     # Uniform for I neurons
     burst_length=1000,
     gap_length=0,
-    connection_density_e=0.1,    # decimal % of E neurons
+    connection_density_e=0.0,    # decimal % of E neurons
     connection_density_i=0.0,     # decimal % of I neurons
     eta_stdp=0.0
 )

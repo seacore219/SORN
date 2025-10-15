@@ -194,9 +194,9 @@ class NeuralNetworkParameterAnalyzer:
         
         # Create parameter combination identifier
         self.data['param_combo'] = (
-            'fp=' + self.data['fp'].astype(str) + '_' +
-            'cde=' + self.data['cde'].astype(str) + '_' +
-            'cdi=' + self.data['cdi'].astype(str)
+            'chance of firing=' + self.data['fp'].astype(str) + '_' +
+            'proportion excitatory neuron firing=' + self.data['cde'].astype(str) + '_' +
+            'proportion inhibitory neuron firing=' + self.data['cdi'].astype(str)
         )
         
         # Filter data to only rows that have h_ip and at least one non-zero AV metric
@@ -384,11 +384,11 @@ class NeuralNetworkParameterAnalyzer:
                             # Create label showing only non-zero values
                             label_parts = []
                             if fp_val > 0:
-                                label_parts.append(f'fp={fp_val}')
+                                label_parts.append(f'firing probability={fp_val}')
                             if cde_val > 0:
-                                label_parts.append(f'cde={cde_val}')
+                                label_parts.append(f'e neuron fraction activated={cde_val}')
                             if cdi_val > 0:
-                                label_parts.append(f'cdi={cdi_val}')
+                                label_parts.append(f'i neuron fraction activated={cdi_val}')
                             label = ', '.join(label_parts)
                             
                             # Plot data points with consistent color and marker
@@ -526,11 +526,11 @@ class NeuralNetworkParameterAnalyzer:
                             # Create label showing only non-zero values
                             label_parts = []
                             if fp_val > 0:
-                                label_parts.append(f'fp={fp_val}')
+                                label_parts.append(f'firing probability={fp_val}')
                             if cde_val > 0:
-                                label_parts.append(f'cde={cde_val}')
+                                label_parts.append(f'e neuron fraction={cde_val}')
                             if cdi_val > 0:
-                                label_parts.append(f'cdi={cdi_val}')
+                                label_parts.append(f'i neuron fraction={cdi_val}')
                             label = ', '.join(label_parts)
                             
                             ax.scatter(combo_data['AV_Alpha'], combo_data['AV_Beta'],
@@ -758,7 +758,7 @@ class NeuralNetworkParameterAnalyzer:
                         subset = fp_data[fp_data['fp'] == fp_val].sort_values('h_ip')
                         ax.plot(subset['h_ip'], subset[metric], 
                                'o--', color='red', alpha=0.5 + 0.2*fp_val, 
-                               label=f'fp={fp_val}', markersize=6, linewidth=2)
+                               label=f'firing probability={fp_val}', markersize=6, linewidth=2)
                 
                 # cde effect
                 cde_data = self.data[
@@ -771,7 +771,7 @@ class NeuralNetworkParameterAnalyzer:
                         subset = cde_data[cde_data['cde'] == cde_val].sort_values('h_ip')
                         ax.plot(subset['h_ip'], subset[metric], 
                                's--', color='blue', alpha=0.5 + 0.2*cde_val,
-                               label=f'cde={cde_val}', markersize=6, linewidth=2)
+                               label=f'e neuron fraction={cde_val}', markersize=6, linewidth=2)
                 
                 ax.set_xlabel('h_ip', fontsize=10)
                 ax.set_ylabel(self.metric_names[metric], fontsize=10)
@@ -916,13 +916,13 @@ class NeuralNetworkParameterAnalyzer:
                                label='Baseline', marker='o', markersize=8)
                     elif fp_val > 0 and cde_val == 0:
                         ax.plot(pivot.index, pivot[col], 'r--', alpha=0.7,
-                               label=f'fp={fp_val}', marker='o', markersize=6)
+                               label=f'firing probability={fp_val}', marker='o', markersize=6)
                     elif fp_val == 0 and cde_val > 0:
                         ax.plot(pivot.index, pivot[col], 'b--', alpha=0.7,
-                               label=f'cde={cde_val}', marker='s', markersize=6)
+                               label=f'e neuron fraction={cde_val}', marker='s', markersize=6)
                     elif fp_val > 0 and cde_val > 0:
                         ax.plot(pivot.index, pivot[col], 'g:', alpha=0.7,
-                               label=f'fp={fp_val}, cde={cde_val}', marker='^', markersize=6)
+                               label=f'firing probability={fp_val}, cde={cde_val}', marker='^', markersize=6)
                 
                 ax.set_xlabel('h_ip', fontsize=12)
                 ax.set_ylabel(self.metric_names[metric], fontsize=12)
@@ -959,9 +959,9 @@ class NeuralNetworkParameterAnalyzer:
             
         # Create a unique identifier for each parameter combination
         self.data['param_combo'] = (
-            'fp=' + self.data['fp'].astype(str) + '_' +
-            'cde=' + self.data['cde'].astype(str) + '_' +
-            'cdi=' + self.data['cdi'].astype(str)
+            'firing probability=' + self.data['fp'].astype(str) + '_' +
+            'e neuron fraction=' + self.data['cde'].astype(str) + '_' +
+            'i neuron fraction=' + self.data['cdi'].astype(str)
         )
         
         # Get unique parameter combinations
@@ -1046,11 +1046,11 @@ class NeuralNetworkParameterAnalyzer:
                 # Create label showing only non-zero values
                 label_parts = []
                 if fp_val > 0:
-                    label_parts.append(f'fp={fp_val}')
+                    label_parts.append(f'firing probability={fp_val}')
                 if cde_val > 0:
-                    label_parts.append(f'cde={cde_val}')
+                    label_parts.append(f'e neuron fraction={cde_val}')
                 if cdi_val > 0:
-                    label_parts.append(f'cdi={cdi_val}')
+                    label_parts.append(f'i neuron fraction={cdi_val}')
                 label = ', '.join(label_parts) if label_parts else 'All zero'
                 
                 line, = legend_ax.plot([], [], marker=markers[combo], linestyle='--',
@@ -1392,7 +1392,7 @@ class NeuralNetworkParameterAnalyzer:
 # Usage example
 if __name__ == "__main__":
     # Set your base path here
-    base_path = r"C:\Users\seaco\OneDrive\Documents\Charles\SORN_PC\backup\finegrain"
+    base_path = r"C:\Users\seaco\OneDrive\Documents\Charles\SORN_PC\backup\finegrain\posterfiles"
     
     # Create analyzer instance
     analyzer = NeuralNetworkParameterAnalyzer(base_path)

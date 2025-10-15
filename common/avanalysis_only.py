@@ -24,6 +24,160 @@ from scipy.sparse import csr_matrix
 import matplotlib.patches as patches
 from matplotlib.colors import LinearSegmentedColormap
 import seaborn as sns
+import criticality_tumbleweed as cr
+
+base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\finegrain\\posterfiles\\batch_hip0.0200_fp0.00_cde0.00_cdi0.00'
+starting_time_point = 2000000
+end_time_point = 4000000
+
+# Avalanche analysis parameters
+AVALANCHE_PARAMS = {
+    'perc_threshold': 0.1,
+    'const_threshold': None,  
+    'size_bm': 10,
+    'size_nfactor': 0,
+    'size_tail_cutoff': 0.66,
+    'duration_tm': 3,       
+    'duration_nfactor': 0,   
+    'duration_tail_cutoff': 0.6,
+    'exclude_burst_min': 18,
+    'exclude_time_min': 10,  
+    'exclude_burst_diff': 12,
+    'exclude_time_diff': 10, 
+    'none_factor': 40,
+    
+    # COLOR CUSTOMIZATION - CHANGE THESE!
+    'color_size': 'red',              # Color for size distribution (α)
+    'color_duration': 'blue',         # Color for duration distribution (β)
+    'color_scaling': 'green',         # Color for scaling relation (γ)
+    'alpha_transparency': 0.8,        # Transparency (0-1)
+    'markersize': 6,                  # Size of markers
+}
+
+# ============================================
+# WRAPPER FUNCTIONS - PUT THESE AFTER CONFIG
+# ============================================
+
+def AV_analysis_custom(burst, T, 
+                      color_size='darkorchid', 
+                      color_duration='mediumseagreen',
+                      color_scaling="#fb0707",
+                      alpha_transparency=0.75,
+                      markersize=5,
+                      **kwargs):
+    """
+    Wrapper around criticality.AV_analysis with custom colors.
+    All other parameters are passed through via **kwargs
+    """
+    
+    # Call the original function but disable plotting
+    kwargs_copy = kwargs.copy()
+    kwargs_copy.pop('plot', None)  # Remove 'plot' if it exists
+    Result = cr.AV_analysis(burst, T, plot=False, **kwargs_copy)
+    
+    # Now create our own plots with custom colors
+    if kwargs.get('plot', True):  # Check if plotting was requested
+        pltname = kwargs.get('pltname', '')
+        saveloc = kwargs.get('saveloc', '')
+        
+        # Create custom plots
+        fig1 = _custom_scaling_plots(
+            Result, burst, 
+            Result['xmin'], Result['xmax'], Result['alpha'],
+            Result['T'], Result['tmin'], Result['tmax'], Result['beta'],
+            Result['TT'], Result['Sm'], 
+            Result['pre'], Result['fit'],
+            pltname, saveloc,
+            Result.get('P_burst'), Result.get('P_t'),
+            color_size, color_duration, color_scaling,
+            alpha_transparency, markersize
+        )
+        
+        Result['scaling_relation_plot'] = fig1
+        plt.close('all')
+    
+    return Result
+
+
+def _custom_scaling_plots(Result, burst, burstMin, burstMax, alpha, 
+                          T, tMin, tMax, beta, TT, Sm, sigma, fit_sigma,
+                          pltname, saveloc, p_val_b, p_val_t,
+                          color_size, color_duration, color_scaling,
+                          alpha_transparency, markersize):
+    """Custom plotting with configurable colors"""
+    
+    burstMax = int(burstMax)
+    burstMin = int(burstMin)
+    fig1, ax1 = plt.subplots(nrows=1, ncols=3, figsize=[10, 6])
+    
+    # Size distribution
+    pdf = np.histogram(burst, bins=np.arange(1, np.max(burst) + 2))[0]
+    p = pdf / np.sum(pdf)
+    ax1[0].plot(np.arange(1, np.max(burst) + 1), p, 
+                marker='o', markersize=markersize, fillstyle='none', 
+                mew=.5, linestyle='none', color=color_size, alpha=alpha_transparency)
+    ax1[0].plot(np.arange(1, np.max(burst) + 1)[burstMin:burstMax],
+                p[burstMin:burstMax], marker='o', markersize=markersize,
+                fillstyle='full', linestyle='none', color=color_size,
+                alpha=alpha_transparency)
+    ax1[0].set_yscale('log')
+    ax1[0].set_xscale('log')
+    
+    x = np.arange(burstMin, burstMax + 1)
+    y = (np.size(np.where(burst == burstMin + 6)[0]) / np.power(burstMin + 6, -alpha)) * np.power(x, -alpha)
+    y = y / np.sum(pdf)
+    ax1[0].plot(x, y, color="#ffea00")
+    ax1[0].set_xlabel('AVsize')
+    ax1[0].set_ylabel('PDF(S)')
+    ax1[0].set_title('AVsize PDF, ' + str(np.round(alpha, 3)))
+    if p_val_b is not None:
+        ax1[0].text(10, .1, f'p_val = {p_val_b}')
+
+    # Duration distribution
+    tdf = np.histogram(T, bins=np.arange(1, np.max(T) + 2))[0]
+    t = tdf / np.sum(tdf)
+    ax1[1].plot(np.arange(1, np.max(T) + 1), t, 
+                marker='o', markersize=markersize, fillstyle='none', 
+                mew=.5, linestyle='None', color=color_duration, alpha=alpha_transparency)
+    ax1[1].plot(np.arange(1, np.max(T) + 1)[tMin:tMax], t[tMin:tMax],
+                marker='o', markersize=markersize, fillstyle='full',
+                linestyle='none', color=color_duration, alpha=alpha_transparency)
+    ax1[1].set_yscale('log')
+    ax1[1].set_xscale('log')
+    
+    x = np.arange(tMin, tMax + 1)
+    y = np.size(np.where(T == tMin)) / (np.power(tMin, -beta)) * np.power(x, -beta)
+    y = y / np.sum(tdf)
+    ax1[1].plot(x, y, color="#00f2ff")
+    ax1[1].set_xlabel('AVduration')
+    ax1[1].set_ylabel('PDF(D)')
+    ax1[1].set_title('AVdura PDF, ' + str(np.round(beta, 3)))
+    if p_val_t is not None:
+        ax1[1].text(10, .1, f'p_val = {p_val_t}')
+
+    # Scaling relation
+    ax1[2].plot(TT, ((np.power(TT, sigma) / np.power(TT[7], sigma)) * Sm[7]),
+                label='pre', color='#4b006e')
+    ax1[2].plot(TT, (np.power(TT, fit_sigma[0]) / np.power(TT[7], fit_sigma[0]) * Sm[7]),
+                label='fit', linestyle='--', color='#826d8c')
+    ax1[2].plot(TT, Sm, 'o', color=color_scaling, markersize=markersize, 
+                mew=.5, fillstyle='none', alpha=alpha_transparency)
+
+    locs = np.where(np.logical_and(TT < tMax, TT > tMin))[0]
+    ax1[2].plot(TT[locs], Sm[locs], 'o', markersize=markersize, mew=.5,
+                color=color_scaling, fillstyle='full', alpha=1)
+    ax1[2].set_xscale('log')
+    ax1[2].set_yscale('log')
+    ax1[2].set_ylabel('<S>')
+    ax1[2].set_xlabel('Duration')
+    ax1[2].set_title('Difference = ' + str(np.round(Result['df'], 3)))
+
+    plt.tight_layout()
+    plt.legend()
+    savefigpath = os.path.join(saveloc, pltname + 'scaling_relations' + '.svg')
+    plt.savefig(savefigpath, format='svg')
+
+    return fig1
 
 # Memory management
 process = psutil.Process(os.getpid())
@@ -35,7 +189,7 @@ print("[INFO] Libraries imported successfully.")
 # ============================================
 # CONFIGURATION
 # ============================================
-base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\delpapa_input\\batch_hip0.06_n6_ps1'
+base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\finegrain\\posterfiles\\batch_hip0.0200_fp0.00_cde0.00_cdi0.00'
 starting_time_point = 2000000
 end_time_point = 4000000  # Set to None for full length
 
@@ -54,6 +208,11 @@ AVALANCHE_PARAMS = {
     'exclude_burst_diff': 12,  # Minimum range (xmax-xmin) - increase for wider fitting range
     'exclude_time_diff': 10, 
     'none_factor': 40,
+    'color_size': 'darkorchid',      # Color for size distribution
+    'color_duration': 'mediumseagreen',  # Color for duration distribution
+    'color_scaling': "#f7fb07",       # Color for scaling relation
+    'alpha_transparency': 0.75,       # Transparency for data points
+    'markersize': 5,                  # Size of marker points
 }
 
 # ============================================
@@ -175,7 +334,10 @@ def AV_analysis(burst, T, flag=1, bm=20, tm=10, nfactor_bm=0, nfactor_tm=0,
                 verbose=True, exclude=False, 
                 exclude_burst=50, exclude_time=20, 
                 exclude_diff_b=20, exclude_diff_t=10, 
-                plot=True, pltname='', saveloc=''):
+                plot=True, pltname='', saveloc='',
+                color_size='darkorchid', color_duration='mediumseagreen',
+                color_scaling="#fbfb07", alpha_transparency=0.75, markersize=5):
+    
     """
     Analyze avalanche distributions
     Returns alpha (size exponent), beta (duration exponent), and scaling difference
@@ -258,12 +420,22 @@ def AV_analysis(burst, T, flag=1, bm=20, tm=10, nfactor_bm=0, nfactor_tm=0,
     Result['Sm'] = Sm
     
     if plot:
-        plot_avalanche_distributions(Result, burst, T, pltname, saveloc)
+        plot_avalanche_distributions(Result, burst, T, pltname, saveloc,
+                                   color_size=color_size,
+                                   color_duration=color_duration,
+                                   color_scaling=color_scaling,
+                                   alpha_transparency=alpha_transparency,
+                                   markersize=markersize)
     
     return Result
 
-def plot_avalanche_distributions(Result, burst, T, pltname, saveloc):
-    """Plot avalanche size and duration distributions"""
+def plot_avalanche_distributions(Result, burst, T, pltname, saveloc,
+                                color_size='darkorchid', 
+                                color_duration='mediumseagreen',
+                                color_scaling="#d6fb07",
+                                alpha_transparency=0.75,
+                                markersize=5):
+    """Plot avalanche size and duration distributions with customizable colors"""
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
     # Size distribution
@@ -286,7 +458,7 @@ def plot_avalanche_distributions(Result, burst, T, pltname, saveloc):
     
     # Scaling relation
     axes[2].loglog(Result['TT'], Result['Sm'], 'o', 
-                   color='#fb7d07', markersize=5, alpha=0.75)
+                   color="#ffee00", markersize=5, alpha=0.75)
     axes[2].set_xlabel('Duration')
     axes[2].set_ylabel('<S>')
     axes[2].set_title(f'Scaling Relation, Δ = {Result["df"]:.3f}')
@@ -2526,7 +2698,7 @@ def main():
         try:
             import criticality as cr
             
-            AV_Result = cr.AV_analysis(
+            AV_Result = AV_analysis_custom(
                 burst=all_burst,
                 T=all_T,
                 flag=1,
@@ -2545,7 +2717,12 @@ def main():
                 exclude_diff_t=AVALANCHE_PARAMS['exclude_time_diff'],
                 plot=True,
                 pltname='avalanche_analysis',
-                saveloc=base_dir
+                saveloc=base_dir,
+                color_size=AVALANCHE_PARAMS['color_size'],
+                color_duration=AVALANCHE_PARAMS['color_duration'],
+                color_scaling=AVALANCHE_PARAMS['color_scaling'],
+                alpha_transparency=AVALANCHE_PARAMS['alpha_transparency'],
+                markersize=AVALANCHE_PARAMS['markersize']
             )
             
             # Print results
@@ -2796,7 +2973,11 @@ def create_network_comparison_plot(all_stats, base_dir):
 
 
 def create_combined_summary_plot(avalanche_results, eigenvalue_results, 
-                                network_stats, base_dir):
+                                network_stats, base_dir,
+                                color_size='darkorchid',
+                                color_duration='mediumseagreen',
+                                alpha_transparency=0.75,
+                                markersize=4):
     """Create a combined summary plot showing all three analyses together."""
     
     fig = plt.figure(figsize=(18, 10))
@@ -2810,7 +2991,7 @@ def create_combined_summary_plot(avalanche_results, eigenvalue_results,
         pdf = np.histogram(burst, bins=np.arange(1, np.max(burst) + 2))[0]
         p = pdf / np.sum(pdf)
         ax2.loglog(np.arange(1, np.max(burst) + 1), p, 'o', 
-                  markersize=4, color='darkorchid', alpha=0.75)
+                  markersize=markersize, color=color_size, alpha=alpha_transparency)
         ax2.set_xlabel('Avalanche Size', fontsize=10)
         ax2.set_ylabel('PDF(S)', fontsize=10)
         ax2.set_title(f"α = {avalanche_results['alpha']:.3f}", fontsize=12, fontweight='bold')
@@ -2822,7 +3003,7 @@ def create_combined_summary_plot(avalanche_results, eigenvalue_results,
         tdf = np.histogram(T, bins=np.arange(1, np.max(T) + 2))[0]
         t = tdf / np.sum(tdf)
         ax3.loglog(np.arange(1, np.max(T) + 1), t, 'o',
-                  markersize=4, color='mediumseagreen', alpha=0.75)
+                  markersize=markersize, color=color_duration, alpha=alpha_transparency)
         ax3.set_xlabel('Avalanche Duration', fontsize=10)
         ax3.set_ylabel('PDF(D)', fontsize=10)
         ax3.set_title(f"β = {avalanche_results['beta']:.3f}", fontsize=12, fontweight='bold')

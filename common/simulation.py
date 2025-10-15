@@ -134,7 +134,7 @@ def organize_simulation_results(batch_folder, num_sims, root_dir):
     
     # Find and move simulation folders
     moved_count = 0
-    test_single_dir = os.path.join(backup_dir, "test_single")
+    test_single_dir = os.path.join(backup_dir, "test_single.py")
     
     print("Looking for simulation folders in: %s" % test_single_dir)
     
