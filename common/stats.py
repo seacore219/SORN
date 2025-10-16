@@ -74,36 +74,62 @@ def _getvar(obj,var):
 class HistoryStat(AbstractStat):
     '''A stat that monitors the value of a variable at every step of
     the simulation'''
-    def __init__(self, var='x',collection="gather",record_every_nth=1):
+    def __init__(self, var='x', collection="gather", record_every_nth=1,
+                 stream_to_h5=False, stream_tbl_name=None, flush_every=50):
         self.var = var
         self.name = var+"_history"
         self.counter = var+"_counter"
         self.collection = collection
         self.record_every_nth = record_every_nth
 
-    def start(self,c,obj):
+        # NEW:
+        self.stream_to_h5 = stream_to_h5
+        self.stream_tbl_name = stream_tbl_name or self.name
+        self.flush_every = max(1, int(flush_every))
+        self._since_flush = 0
+
+    def start(self, c, obj):
         if 'history' not in c:
             c.history = utils.Bunch()
         c.history[self.counter] = 0
+        c.history[self.name] = []
 
     def clear(self, c, obj):
         c.history[self.name] = []
+        self._since_flush = 0
 
-    def add(self,c,obj):
+    def add(self, c, obj):
         if not (c.history[self.counter] % self.record_every_nth):
-            tmp = _getvar(obj,self.var)
+            tmp = _getvar(obj, self.var)
             if callable(tmp):
-                tmp=tmp()
-            c.history[self.name].append(np.copy(tmp))
+                tmp = tmp()
+
+            if self.stream_to_h5:
+                # Stream a single row incrementally to HDF5
+                # Access the datalog via parent
+                self.parent.dlog.append(self.stream_tbl_name, np.asarray(tmp))
+                self._since_flush += 1
+                # Optional: throttle FS flushes by batching (uses AutoTable.flush=True anyway)
+                if self._since_flush >= self.flush_every:
+                    # Force a file-level flush for safety (optional)
+                    try:
+                        # Find the StoreToH5 handler and call h5.flush()
+                        for (_, handler) in self.parent.dlog.policy:
+                            if hasattr(handler, "autotbl"):
+                                handler.autotbl.flush()
+                        self._since_flush = 0
+                    except Exception:
+                        pass
+            else:
+                # Original behavior: keep in RAM to dump once at the end
+                c.history[self.name].append(np.copy(tmp))
+
         c.history[self.counter] += 1
 
-    def report(self,c,obj):
-        try:
-            return array(c.history[self.name])
-        except ValueError as v:
-            print 'Error in stats.py', v, self.name
-            #~ import pdb
-            #~ pdb.set_trace()
+    def report(self, c, obj):
+        if self.stream_to_h5:
+            return np.array([])   # nothing further to write
+        return np.array(c.history[self.name])
 
 
 class StatsCollection:

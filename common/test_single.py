@@ -85,6 +85,18 @@ print("hi")
 # Create a StatsCollection and fill it with methods for all statistics
 # that should be tracked (and later plotted)
 stats = StatsCollection(sorn)
+for m in stats.methods:
+    # Stream E spikes
+    if isinstance(m, HistoryStat) and m.var == 'x':
+        m.stream_to_h5 = True
+        m.stream_tbl_name = 'spikes_e'   # table name in HDF5
+        m.flush_every = 50               # tune as desired
+
+    # (Optional) stream I spikes
+    if isinstance(m, HistoryStat) and m.var == 'y':
+        m.stream_to_h5 = True
+        m.stream_tbl_name = 'spikes_i'
+        m.flush_every = 50
 stats.methods = stats_single
 sorn.stats = stats
 

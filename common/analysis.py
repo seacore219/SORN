@@ -41,7 +41,7 @@ print("[INFO] all libraries imported successfully.")
 print("[INFO] Searching for directories with simulation results...")
 ## Need to find all the directories where there are valid sims
 # base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\GitHub\\SORN\\mu=0.02_sigma=0.05_500K+3.5M_plastic_raster\\test_single'
-base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\finegrain\\posterfiles\\batch_hip0.2000_fp0.00_cde0.00_cdi0.00'
+base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\SORN_PC\\backup\\finegrain\\batch_hip0.0600_fp0.00_cde0.10_cdi0.00_eta_ip0.0001'
 # base_dir = 'C:\\Users\\seaco\\OneDrive\\Documents\\Charles\\CharlesSORNneo\\backup\\test_single\\batch_hip0.0075_fp0.01_cde0.01_cdi0.01
 # base_dir = 'C:\\Users\\seaco\\Downloads\\sims\\randn_10%_e_hip0.2_uext0.2'
 #pattern = r"SPmu=(\d+\.\d+)_sigma=(\d+\.\d+base_).*_raster"
