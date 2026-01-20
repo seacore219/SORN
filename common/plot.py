@@ -948,7 +948,7 @@ class NeuralNetworkParameterAnalyzer:
             plt.close()
             
     
-    def create_color_coded_hip_plots(self, save_path=None):
+    def create_color_coded_hip_plots(self, save_path=None, fit_range=(0.02, 0.08)):
         """Create h_ip vs metric plots with color coding for different parameter combinations"""
         if save_path is None:
             save_path = self.output_dir / 'hip_color_coded_analysis.pdf'
@@ -957,16 +957,42 @@ class NeuralNetworkParameterAnalyzer:
             print("No data loaded!")
             return
             
+        plot_data = self.data.copy()
+        
         # Create a unique identifier for each parameter combination
-        self.data['param_combo'] = (
-            'firing probability=' + self.data['fp'].astype(str) + '_' +
-            'e neuron fraction=' + self.data['cde'].astype(str) + '_' +
-            'i neuron fraction=' + self.data['cdi'].astype(str)
+        plot_data['param_combo'] = (
+            'firing probability=' + plot_data['fp'].astype(str) + '_' +
+            'e neuron fraction=' + plot_data['cde'].astype(str) + '_' +
+            'i neuron fraction=' + plot_data['cdi'].astype(str)
         )
         
+        if fit_range is not None:
+            in_range = plot_data['h_ip'].between(fit_range[0], fit_range[1], inclusive='both')
+            fit_subset = plot_data[in_range]
+        else:
+            fit_subset = plot_data
+        
+        if fit_subset.empty:
+            hip_candidates = np.sort(plot_data['h_ip'].dropna().unique())
+        else:
+            hip_candidates = np.sort(fit_subset['h_ip'].dropna().unique())
+        
+        if hip_candidates.size == 0:
+            print("No h_ip values available for plotting!")
+            return
+        if hip_candidates.size >= 2:
+            selected_h_ips = [hip_candidates[0], hip_candidates[-1]]
+        else:
+            selected_h_ips = [hip_candidates[0]]
+        
+        plot_data = plot_data[plot_data['h_ip'].isin(selected_h_ips)].copy()
+        if plot_data.empty:
+            print(f"No data found for h_ip values {selected_h_ips}")
+            return
+        print(f"Plotting h_ip values limited to: {', '.join(f'{value:.3f}' for value in selected_h_ips)}")
+        
         # Get unique parameter combinations
-        unique_combos = self.data['param_combo'].unique()
-        n_combos = len(unique_combos)
+        unique_combos = plot_data['param_combo'].unique()
         
         # Create color map
         # Baseline is black, others get colors from a colormap
@@ -1092,7 +1118,7 @@ class NeuralNetworkParameterAnalyzer:
                 
                 # Plot baseline with clean styling
                 if baseline_combo:
-                    baseline_data = self.data[self.data['param_combo'] == baseline_combo].sort_values('h_ip')
+                    baseline_data = plot_data[plot_data['param_combo'] == baseline_combo].sort_values('h_ip')
                     if not baseline_data.empty:
                         # Plot the line and markers
                         ax.plot(baseline_data['h_ip'], baseline_data[metric],
@@ -1130,7 +1156,7 @@ class NeuralNetworkParameterAnalyzer:
                     if baseline_combo and combo == baseline_combo:
                         continue
                         
-                    combo_data = self.data[self.data['param_combo'] == combo].sort_values('h_ip')
+                    combo_data = plot_data[plot_data['param_combo'] == combo].sort_values('h_ip')
                     if not combo_data.empty:
                         # Plot the line and markers
                         ax.plot(combo_data['h_ip'], combo_data[metric],
@@ -1176,10 +1202,9 @@ class NeuralNetworkParameterAnalyzer:
                 ax.tick_params(axis='both', which='minor', width=1, length=2)
                 
                 # Set x-axis to show exact h_ip values without rounding
-                unique_h_ips = sorted(self.data['h_ip'].unique())
-                ax.set_xticks(unique_h_ips)
+                ax.set_xticks(selected_h_ips)
                 # Format labels to show exact values
-                ax.set_xticklabels([f'{x:.4g}' for x in unique_h_ips])
+                ax.set_xticklabels([f'{x:.4g}' for x in selected_h_ips])
                 plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right', fontsize=5)
             
             # No need to hide unused subplots since we're creating exact number needed
@@ -1216,13 +1241,13 @@ class NeuralNetworkParameterAnalyzer:
             shared_min = float('inf')
             shared_max = float('-inf')
             for metric in scaled_metrics:
-                if metric in self.data.columns:
-                    shared_min = min(shared_min, self.data[metric].min())
-                    shared_max = max(shared_max, self.data[metric].max())
+                if metric in plot_data.columns:
+                    shared_min = min(shared_min, plot_data[metric].min())
+                    shared_max = max(shared_max, plot_data[metric].max())
             
             for metric in plot_metrics:
                 # Get all data sorted by h_ip
-                sorted_data = self.data.sort_values('h_ip')
+                sorted_data = plot_data.sort_values('h_ip')
                 
                 # Group by h_ip and calculate mean for each h_ip value
                 grouped = sorted_data.groupby('h_ip')[metric].mean()
@@ -1260,9 +1285,8 @@ class NeuralNetworkParameterAnalyzer:
                      frameon=True, fancybox=True, shadow=False)
             
             # Set x-axis to show all discrete h_ip values
-            unique_h_ips = sorted(self.data['h_ip'].unique())
-            ax.set_xticks(unique_h_ips)
-            ax.set_xticklabels([f'{x:.3f}' for x in unique_h_ips])
+            ax.set_xticks(selected_h_ips)
+            ax.set_xticklabels([f'{x:.3f}' for x in selected_h_ips])
             plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
             
             # Add reference lines
